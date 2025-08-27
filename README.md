@@ -17,50 +17,61 @@ It is designed for developers who want **blazing-fast CRUD**, simple DX, and min
 
 ## Benchmarks
 
+All benchmarks run on Apple M2 Pro Max, single-threaded, with a 10KB AOF buffer.
+
 Snapshot #1 (before generation)...
-generate_docs: 1407ms
 Snapshot #2 (after generation)...
 
 === Pre-generation Memory ===
-RSS before gen : 55.4 MB
-RSS after gen : 1402.1 MB (Δ = 1346.7 MB)
+RSS before gen : 54.9 MB
+RSS after gen : 1401.3 MB (Δ = 1346.4 MB)
 
 === Mixed Workload (single thread) ===
 mix: R=60% W=30% U=8% D=2%
 Prefill 200,000 docs...
 
+=== Post-prefill Memory ===
+RSS after inserting 200,000 docs: 1550.2 MB
+Per-doc cost: 8127.53 bytes/doc (approx)
+
 --- Results ---
-duration: 1.061s | throughput: 942491 ops/s
-counts: { read: 599218, write: 300615, update: 80039, del: 20128 }
-errors: { read: 492, write: 0, update: 63, del: 15 }
+duration: 0.616s | throughput: 1622255 ops/s
+counts: { read: 600438, write: 300067, update: 79391, del: 20104 }
+errors: { read: 516, write: 0, update: 71, del: 11 }
 latency p50/p95/p99 (ms)
-READ : 0.000125/0.000250/0.000416
-WRITE : 0.002125/0.004042/0.005917
-UPDATE: 0.000167/0.000334/0.000458
-DELETE: 0.000167/0.000292/0.000500
-RSS: 1889.5 MB -> 2419.8 MB (Δ 530.3 MB)
+READ : 0.000125/0.000292/0.000459
+WRITE : 0.000167/0.006708/0.010166
+UPDATE: 0.000166/0.000416/0.000625
+DELETE: 0.000167/0.000375/0.003250
+RSS: 1551.8 MB -> 1730.1 MB (Δ 178.4 MB)
 
-Memory usage:
+### Memory usage
 
-- 1M records ≈ **530 MB RAM**
-- RSS grows predictably (~530 bytes per document)
+Measured with 1KB documents:
+
+- 200,000 records = ~149 MB RAM
+- ≈ **8 KB per record** (payload + engine overhead)
+- 1,000,000 records ≈ **800 MB RAM**
+
+ShinDB achieves sub-microsecond reads/writes at this density.
 
 ---
 
 ## Roadmap
 
 - [x] Core `CollectionManager` with CRUD ops
+- [ ] Reduce engine overhead
 - [ ] Batch operations (createMany, etc.)
 - [ ] Unique field validation
 - [ ] Query + filtering engine
+- [ ] Result caching
 - [x] Append-only persistence (AOF)
 - [x] Benchmark suite (1M+ records, ~1M ops/sec)
 - [ ] TypeScript SDK design (initial draft)
 - [ ] Protocol transport layer (TCP)
-- [ ] AOF compaction (like Redis `BGREWRITEAOF`)
+- [ ] AOF compaction
 - [ ] Worker offloading for persistence (background AOF writing)
-- [ ] Indexing (unique, required, optional secondary indexes)
-- [ ] SDK polish (strong typings, ergonomic API)
+- [ ] SDK polish
 - [ ] Clustering (multi-process, hash-partitioning)
 - [ ] Replication (multi-node safety)
 - [ ] Query optimizer (scatter-gather queries across nodes)

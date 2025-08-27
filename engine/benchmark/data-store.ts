@@ -149,7 +149,23 @@ async function runMixed() {
   );
 
   console.log(`Prefill ${PREFILL.toLocaleString()} docs...`);
-  for (let i = 0; i < PREFILL; i++) ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
+  for (let i = 0; i < PREFILL; i++) {
+    ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
+  }
+
+  // 🔎 snapshot after prefill
+  const afterPrefill = memSnap();
+  console.log("\n=== Post-prefill Memory ===");
+  console.log(
+    `RSS after inserting ${PREFILL.toLocaleString()} docs: ${fmtMB(
+      afterPrefill.rss
+    )}`
+  );
+  console.log(
+    `Per-doc cost: ${(afterPrefill.rss / PREFILL).toFixed(
+      2
+    )} bytes/doc (approx)`
+  );
 
   let pool = harvestIds();
 
@@ -225,5 +241,3 @@ async function runMixed() {
 
 // ---- RUN SEQUENCE ----
 await runMixed();
-
-Archive.getInstance().close();

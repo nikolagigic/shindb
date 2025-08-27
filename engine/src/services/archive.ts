@@ -3,7 +3,7 @@ export default class Archive {
   private file: Deno.FsFile;
   private buf: Uint8Array[] = [];
   private bufSize = 0;
-  private readonly FLUSH_BYTES = 1 * 1024; // 64 KB
+  private readonly FLUSH_BYTES = 10 * 1024; // 10 KB
   private worker: Worker;
 
   constructor() {
@@ -26,12 +26,11 @@ export default class Archive {
   }
 
   public addRecord(content: Uint8Array) {
-    this.worker.postMessage({ content });
-    // this.buf.push(content);
-    // this.bufSize += content.length;
-    // if (this.bufSize >= this.FLUSH_BYTES) {
-    //   this.flush();
-    // }
+    this.buf.push(content);
+    this.bufSize += content.length;
+    if (this.bufSize >= this.FLUSH_BYTES) {
+      this.flush();
+    }
   }
 
   private flush() {
