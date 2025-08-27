@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "dev": "deno run -q --watch --allow-net --allow-read --allow-write --allow-env main.ts",
+    "benchmark": "deno run --allow-write --allow-env --allow-read ./benchmark/data-store.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@1",
+    "@/": "./src/"
+  }
+}
