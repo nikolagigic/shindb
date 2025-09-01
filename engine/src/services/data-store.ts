@@ -20,6 +20,14 @@ export interface DataStore<V = unknown> {
   ): Response<{ id: DocId }> | Promise<Response<{ id: DocId }>>;
   update(name: string, docId: DocId, doc: V): Response;
   delete(name: string, docId: DocId): Response;
+  getMany(name: string, docIds: DocId[]): Response<Map<DocId, V>>;
+  setMany(
+    name: string,
+    docs: V[]
+  ): Response<{ ids: DocId[] }> | Promise<Response<{ ids: DocId[] }>>;
+  updateMany(name: string, updates: { id: DocId; doc: V }[]): Response;
+  replaceMany(name: string, updates: { id: DocId; doc: V }[]): Response;
+  deleteMany(name: string, docIds: DocId[]): Response<{ deleted: number }>;
 }
 
 export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
@@ -132,5 +140,87 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
   size(name: string): Response<number> {
     const st = this.data.get(name);
     return st ? { status: Status.OK, data: st.size } : { status: Status.ERROR };
+  }
+
+  getMany(name: string, docIds: DocId[]): Response<Map<DocId, V>> {
+    if (!this.ensure(name)) return { status: Status.ERROR };
+    const st = this.ensureState(name);
+
+    const result = new Map<DocId, V>();
+    for (const id of docIds) {
+      const doc = st.map.get(id);
+      if (doc !== undefined) result.set(id, doc);
+    }
+
+    return { status: Status.OK, data: result };
+  }
+
+  setMany(name: string, docs: V[]): Response<{ ids: DocId[] }> {
+    if (!this.ensure(name)) return { status: Status.ERROR };
+    const st = this.ensureState(name);
+
+    const ids: DocId[] = new Array(docs.length);
+
+    let i = 0;
+    for (const doc of docs) {
+      const id = this.nextId(st);
+      st.map.set(id, doc);
+      ids[i++] = id;
+    }
+
+    st.size += docs.length;
+
+    for (const doc of docs) {
+      this.archive.addRecord(doc);
+    }
+
+    return { status: Status.OK, data: { ids } };
+  }
+
+  updateMany(name: string, updates: { id: DocId; doc: V }[]): Response {
+    if (!this.ensure(name)) return { status: Status.ERROR };
+    const st = this.ensureState(name);
+
+    for (const { id, doc } of updates) {
+      if (st.map.has(id)) {
+        st.map.set(id, doc);
+      } else {
+        return { status: Status.ERROR };
+      }
+    }
+
+    return { status: Status.OK };
+  }
+
+  replaceMany(name: string, updates: { id: DocId; doc: V }[]): Response {
+    if (!this.ensure(name)) return { status: Status.ERROR };
+    const st = this.ensureState(name);
+
+    for (const { id, doc } of updates) {
+      if (!st.map.has(id)) {
+        return { status: Status.ERROR };
+      }
+      st.map.set(id, doc);
+    }
+
+    return { status: Status.OK };
+  }
+
+  deleteMany(name: string, docIds: DocId[]): Response<{ deleted: number }> {
+    if (!this.ensure(name)) return { status: Status.ERROR };
+    const st = this.ensureState(name);
+
+    let deleted = 0;
+    const map = st.map;
+
+    for (let i = 0; i < docIds.length; i++) {
+      if (map.delete(docIds[i])) {
+        deleted++;
+      }
+    }
+
+    if (deleted > 0) st.size -= deleted;
+
+    return { status: Status.OK, data: { deleted } };
   }
 }

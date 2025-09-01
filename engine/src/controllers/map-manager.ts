@@ -133,4 +133,62 @@ export default class MapManager<V extends Uint8Array<ArrayBufferLike>>
   mapsCount(): number {
     return this.maps.size;
   }
+
+  getMany(name: string, docIds: DocId[]): Response<Map<DocId, V>> {
+    const result = new Map<DocId, V>();
+
+    for (const id of docIds) {
+      const res = this.get(name, id);
+      if (res.status === Status.OK && res.data) {
+        result.set(id, res.data);
+      }
+    }
+
+    return { status: Status.OK, data: result };
+  }
+
+  async setMany(name: string, docs: V[]): Promise<Response<{ ids: DocId[] }>> {
+    const currentMap = await this.getCurrentMap();
+
+    currentMap.size += docs.length;
+    return currentMap.map.setMany(name, docs);
+  }
+
+  updateMany(name: string, updates: { id: DocId; doc: V }[]): Response {
+    for (const { id, doc } of updates) {
+      const res = this.update(name, id, doc);
+      if (res.status !== Status.OK) {
+        return { status: Status.ERROR };
+      }
+    }
+    return { status: Status.OK };
+  }
+
+  replaceMany(name: string, updates: { id: DocId; doc: V }[]): Response {
+    for (const { id, doc } of updates) {
+      const mapState = this.findIdInMap(name, id);
+      if (!mapState) return { status: Status.ERROR };
+
+      const res = mapState.map.replace(name, id, doc);
+      if (res.status !== Status.OK) return res;
+    }
+    return { status: Status.OK };
+  }
+
+  deleteMany(name: string, docIds: DocId[]): Response<{ deleted: number }> {
+    let deleted = 0;
+
+    for (const id of docIds) {
+      const state = this.findIdInMap(name, id);
+      if (state) {
+        const res = state.map.delete(name, id);
+        if (res.status === Status.OK) {
+          state.size--;
+          deleted++;
+        }
+      }
+    }
+
+    return { status: Status.OK, data: { deleted } };
+  }
 }

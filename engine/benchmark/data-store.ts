@@ -245,5 +245,120 @@ async function runMixed() {
   );
 }
 
+// === Batch benchmarks ===
+async function runBatchOps() {
+  console.log("\n=== Batch Operations ===");
+
+  // fresh pool of docs
+  const batchDocs: V[] = [];
+  for (let i = 0; i < PREFILL; i++) batchDocs.push(makeDoc());
+
+  // ----- setMany -----
+  console.time("batch-setMany");
+  const resCreate = await ds.setMany(COLLECTION, batchDocs);
+  console.timeEnd("batch-setMany");
+  if (resCreate.status !== Status.OK) {
+    console.error("setMany failed");
+  }
+
+  const ids = resCreate.data?.ids ?? [];
+
+  // ----- updateMany -----
+  const updates = ids.map((id) => ({
+    id,
+    doc: new Uint8Array(32), // smaller patch
+  }));
+  updates.forEach((u) => crypto.getRandomValues(u.doc));
+
+  console.time("batch-updateMany");
+  const resUpdate = ds.updateMany(COLLECTION, updates);
+  console.timeEnd("batch-updateMany");
+  if (resUpdate.status !== Status.OK) {
+    console.error("updateMany failed");
+  }
+
+  // ----- deleteMany -----
+  console.time("batch-deleteMany");
+  const resDelete = ds.deleteMany(COLLECTION, ids);
+  console.timeEnd("batch-deleteMany");
+  if (resDelete.status !== Status.OK) {
+    console.error("deleteMany failed");
+  } else {
+    console.log(`Deleted ${resDelete.data?.deleted ?? 0} docs`);
+  }
+}
+
+// === Microbenchmarks: single vs batch per-op ===
+async function runPerOpComparisons() {
+  console.log("\n=== Per-Operation Comparisons ===");
+
+  // ----- set vs setMany -----
+  const singleStart = now();
+  for (let i = 0; i < PREFILL; i++) {
+    await ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
+  }
+  const singleDur = (now() - singleStart) / 1000;
+  const singleTput = Math.round(PREFILL / singleDur);
+
+  const batchStart = now();
+  const resBatchSet = await ds.setMany(COLLECTION, docs.slice(0, PREFILL));
+  const batchDur = (now() - batchStart) / 1000;
+  const batchTput = Math.round(PREFILL / batchDur);
+
+  console.log(`INSERTS: single=${singleTput}/s batch=${batchTput}/s`);
+
+  // gather IDs for next tests
+  const ids = resBatchSet.data?.ids ?? [];
+
+  // ----- update vs updateMany -----
+  const updates = ids.map((id: number) => ({
+    id,
+    doc: new Uint8Array(32),
+  }));
+  updates.forEach((u: { id: number; doc: V }) => crypto.getRandomValues(u.doc));
+
+  const updSingleStart = now();
+  for (const { id, doc } of updates) {
+    ds.update(COLLECTION, id, doc);
+  }
+  const updSingleDur = (now() - updSingleStart) / 1000;
+  const updSingleTput = Math.round(PREFILL / updSingleDur);
+
+  const updBatchStart = now();
+  ds.updateMany(COLLECTION, updates);
+  const updBatchDur = (now() - updBatchStart) / 1000;
+  const updBatchTput = Math.round(PREFILL / updBatchDur);
+
+  console.log(`UPDATES: single=${updSingleTput}/s batch=${updBatchTput}/s`);
+
+  // ----- delete vs deleteMany -----
+  const delSingleStart = now();
+  for (const id of ids) {
+    ds.delete(COLLECTION, id);
+  }
+  const delSingleDur = (now() - delSingleStart) / 1000;
+  const delSingleTput = Math.round(PREFILL / delSingleDur);
+
+  const delBatchStart = now();
+  ds.deleteMany(COLLECTION, ids);
+  const delBatchDur = (now() - delBatchStart) / 1000;
+  const delBatchTput = Math.round(PREFILL / delBatchDur);
+
+  console.log(`DELETES: single=${delSingleTput}/s batch=${delBatchTput}/s`);
+}
+
 // ---- RUN SEQUENCE ----
 await runMixed();
+await runBatchOps();
+await runPerOpComparisons();
+
+// --- Summary comparison ---
+console.log("\n=== Summary Comparison ===");
+console.log("Mixed workload shows per-op latencies (read/write/update/del).");
+console.log(
+  "Batch ops show total time to process an entire PREFILL set " +
+    `(=${PREFILL.toLocaleString()} docs).`
+);
+console.log(
+  "This highlights the overhead saved when using batch instead of single ops."
+);
