@@ -23,9 +23,9 @@ All benchmarks run on Apple M2 Pro Max, single-threaded, with a 4KB AOF buffer.
 
 ### Ops throughput
 
-- Reads in **~100–300 ns**
-- Writes in **~2 µs**
-- Throughput: **~1,200,000 ops/sec**
+- INSERTS: single=796500/s batch=940472/s
+- UPDATES: single=8388441/s batch=11356082/s
+- DELETES: single=20729595/s batch=8815006/s
 
 ### Memory scaling
 
@@ -50,7 +50,7 @@ ShinDB pushes V8 to its absolute limits:
 - [x] Append-only persistence (AOF)
 - [x] Benchmark suite (1M+ ops/sec, 30M+ docs)
 - [x] Sharded Map manager (bypassing V8 limits)
-- [ ] Batch operations (`createMany`, bulk update/delete)
+- [x] Batch operations (`createMany`, bulk update/delete)
 - [ ] Unique field validation
 - [ ] Query + filtering engine
 - [ ] Result caching
