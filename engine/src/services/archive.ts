@@ -1,20 +1,19 @@
+import Logger from "../utils/logger.ts";
+
 export default class Archive {
   static instance: Archive;
   private file: Deno.FsFile;
   private buf: Uint8Array[] = [];
   private bufSize = 0;
-  private readonly FLUSH_BYTES = 10 * 1024; // 10 KB
-  private worker: Worker;
+  private readonly FLUSH_BYTES = 4 * 1024;
 
   constructor() {
     this.file = Deno.openSync("./archive/records.aof", {
       append: true,
+      create: true,
     });
 
-    this.worker = new Worker(
-      new URL("../workers/aof-writer.ts", import.meta.url).href,
-      { type: "module" }
-    );
+    Logger.success("Archive set-up");
   }
 
   static getInstance() {

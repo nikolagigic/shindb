@@ -3,7 +3,7 @@
 
 import CollectionManager from "@/controllers/collection-manager.ts";
 import { Status } from "@/types/operations.ts";
-import Archive from "@/services/archive.ts";
+import Logger from "@/utils/logger.ts";
 
 type V = Uint8Array;
 
@@ -20,11 +20,7 @@ const REFRESH_EVERY = 25_000;
 // ----- bootstrap collectionManager / collection -----
 const collectionManager = CollectionManager.getInstance();
 collectionManager.catalog.set(COLLECTION, {});
-const ds: any = collectionManager.dataStore;
-if (!ds?.ensure?.(COLLECTION)) {
-  console.error("dataStore or collection missing.");
-  Deno.exit(1);
-}
+const ds = collectionManager.mapManager; // use MapManager
 
 // ----- utils -----
 const KB = 1024,
@@ -91,11 +87,22 @@ function chooseOp(u: number): keyof Counters {
   if (u < MIX.read + MIX.write + MIX.update) return "update";
   return "del";
 }
+
+// gather ids from all maps
 function harvestIds(): number[] {
-  const res = ds.getAll(COLLECTION);
-  const map = res?.data as Map<number, unknown> | undefined;
-  return map ? Array.from(map.keys()) : [];
+  const ids: number[] = [];
+  for (const [, mapState] of (ds as any).maps) {
+    const res = mapState.map.getAll(COLLECTION);
+    const map = res?.data as Map<number, unknown> | undefined;
+    if (map) {
+      for (const key of map.keys()) {
+        ids.push(key);
+      }
+    }
+  }
+  return ids;
 }
+
 function pickFrom(pool: number[]) {
   if (!pool.length) return undefined;
   const i = (Math.random() * pool.length) | 0;
@@ -103,9 +110,9 @@ function pickFrom(pool: number[]) {
 }
 
 // ops
-function opWrite(i: number): number {
+async function opWrite(i: number): Promise<number> {
   const t0 = now();
-  const r = ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
+  await ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
   const t1 = now();
   return t1 - t0;
 }
@@ -121,7 +128,7 @@ function opRead(pool: number[]): [number, boolean] {
 function opUpdate(pool: number[]): [number, boolean] {
   const id = pickFrom(pool);
   if (id === undefined) return [0, false];
-  const patch: V = new Uint8Array(16); // small overwrite
+  const patch: V = new Uint8Array(16);
   crypto.getRandomValues(patch);
   const t0 = now();
   const r = ds.update(COLLECTION, id, patch);
@@ -150,10 +157,9 @@ async function runMixed() {
 
   console.log(`Prefill ${PREFILL.toLocaleString()} docs...`);
   for (let i = 0; i < PREFILL; i++) {
-    ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
+    await ds.set(COLLECTION, docs[i % DOCS_PREGEND]);
   }
 
-  // 🔎 snapshot after prefill
   const afterPrefill = memSnap();
   console.log("\n=== Post-prefill Memory ===");
   console.log(
@@ -194,7 +200,7 @@ async function runMixed() {
         break;
       }
       case "write": {
-        const lat = opWrite(i);
+        const lat = await opWrite(i);
         counts.write++;
         if (counts.write % SAMPLE_EVERY === 0) lats.w.push(lat);
         break;

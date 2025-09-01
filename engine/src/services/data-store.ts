@@ -1,24 +1,23 @@
-// deno-lint-ignore-file no-explicit-any
-
 import { Response, Status } from "@/types/operations.ts";
 import { CollectionsCatalog } from "./collections-catalog.ts";
 import Archive from "./archive.ts";
+import Logger from "../utils/logger.ts";
 
-type CollectionName = string;
-type DocId = number;
-type Doc<V> = Map<DocId, V>;
-type CollectionState<V> = {
+export type CollectionName = string;
+export type DocId = number;
+export type Doc<V> = Map<DocId, V>;
+export type CollectionState<V> = {
   map: Doc<V>;
   nextId: DocId;
   size: number;
 };
 
 export interface DataStore<V = unknown> {
-  ensure(name: string): boolean;
-  ensureCollectionMap(name: string): Doc<V>;
-  getAll(name: string): Response<Doc<V>>;
   get(name: string, docId: DocId): Response<V>;
-  set(name: string, doc: V): Response<{ id: DocId }>;
+  set(
+    name: string,
+    doc: V
+  ): Response<{ id: DocId }> | Promise<Response<{ id: DocId }>>;
   update(name: string, docId: DocId, doc: V): Response;
   delete(name: string, docId: DocId): Response;
 }
@@ -37,10 +36,16 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     return this.catalog.exists(name);
   }
 
-  private ensureState(name: string): CollectionState<V> {
+  public ensureState(
+    name: string,
+    options = { nextId: 0, size: 0 }
+  ): CollectionState<V> {
     let st = this.data.get(name);
     if (!st) {
-      st = { map: new Map<DocId, V>(), nextId: 0, size: 0 };
+      st = {
+        map: new Map<DocId, V>(),
+        ...options,
+      };
       this.data.set(name, st);
     }
     return st;
