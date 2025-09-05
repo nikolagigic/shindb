@@ -35,8 +35,6 @@ export default class Protocol {
 
   private async handleConnection(connection: Deno.Conn) {
     try {
-      this.collectionManager.catalog.set("users", {});
-
       const buffer = new Uint8Array(1024);
       while (true) {
         const bytesRead = await connection.read(buffer);

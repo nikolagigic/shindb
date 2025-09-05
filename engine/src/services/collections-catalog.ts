@@ -15,6 +15,28 @@ type Collections<V> = Map<CollectionName, V>;
 
 export class InMemoryCollectionsCatalog implements CollectionsCatalog {
   private readonly collections: Collections<Table> = new Map<string, Table>();
+  private collectionUniqueFields: Map<CollectionName, Map<string, boolean>> =
+    new Map();
+
+  private getOrCreate<K, V>(map: Map<K, V>, key: K, factory: () => V): V {
+    let value = map.get(key);
+    if (value === undefined) {
+      value = factory();
+      map.set(key, value);
+    }
+    return value;
+  }
+
+  private ensureCollectionUniqueMap(name: string) {
+    return this.getOrCreate(this.collectionUniqueFields, name, () => new Map());
+  }
+
+  private setUniqueFields(name: string, table: Table) {
+    Object.keys(table).map((k) => {
+      const collection = this.ensureCollectionUniqueMap(name);
+      collection.set(k, table[k].modifiers?.includes("unique"));
+    });
+  }
 
   getAll(): Response<ReadonlyMap<string, Table>> {
     return {
@@ -40,6 +62,8 @@ export class InMemoryCollectionsCatalog implements CollectionsCatalog {
   set(name: string, table: Table): Response {
     this.collections.set(name, table);
 
+    this.setUniqueFields(name, table);
+
     return {
       status: Status.OK,
     };
@@ -52,6 +76,7 @@ export class InMemoryCollectionsCatalog implements CollectionsCatalog {
       };
     }
 
+    this.setUniqueFields(name, table);
     this.collections.set(name, table);
 
     return {
@@ -66,6 +91,7 @@ export class InMemoryCollectionsCatalog implements CollectionsCatalog {
       };
     }
 
+    this.collectionUniqueFields.delete(name);
     this.collections.delete(name);
 
     return {

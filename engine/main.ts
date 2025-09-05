@@ -27,5 +27,5 @@ if (import.meta.main) {
 
   const protocol = Protocol.start(collectionManager);
 
-  startMemoryMonitor(1000); // log every 1s
+  // startMemoryMonitor(1000); // log every 1s
 }

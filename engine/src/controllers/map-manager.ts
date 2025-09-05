@@ -1,7 +1,14 @@
-import { InMemoryDataStore, DataStore, DocId } from "@/services/data-store.ts";
+// deno-lint-ignore-file no-explicit-any
+import {
+  InMemoryDataStore,
+  DataStore,
+  DocId,
+  CollectionName,
+} from "@/services/data-store.ts";
 import { Response, Status } from "@/types/operations.ts";
 import { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
 import Archive from "../services/archive.ts";
+import Logger from "../utils/logger.ts";
 
 const MAX_ALLOCATED_ENTRIES = 6_000_000;
 
@@ -32,12 +39,16 @@ interface MapState<V extends Uint8Array<ArrayBufferLike>> {
 export default class MapManager<V extends Uint8Array<ArrayBufferLike>>
   implements DataStore<V>
 {
+  private decoder: TextDecoder;
   private maps: Map<number, MapState<V>> = new Map();
   private currentMapIndex: number = 0;
+
+  private uniqueFieldsMap: Map<CollectionName, Map<string, any>> = new Map();
 
   private readonly mapMutex = new Mutex();
 
   constructor(readonly catalog: InMemoryCollectionsCatalog) {
+    this.decoder = new TextDecoder();
     this.maps.set(this.currentMapIndex, {
       map: new InMemoryDataStore(catalog, Archive.getInstance()),
       size: 0,
@@ -94,6 +105,8 @@ export default class MapManager<V extends Uint8Array<ArrayBufferLike>>
 
   async set(name: string, doc: V): Promise<Response<{ id: number }>> {
     const currentMap = await this.getCurrentMap()!;
+
+    Logger.success(JSON.parse(this.decoder.decode(doc)));
 
     currentMap.size++;
     return currentMap.map.set(name, doc);

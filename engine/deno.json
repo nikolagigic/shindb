@@ -5,6 +5,7 @@
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
-    "@/": "./src/"
+    "@/": "./src/",
+    "@std/msgpack": "jsr:@std/msgpack@^1.0.3"
   }
 }
