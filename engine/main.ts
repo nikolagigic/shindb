@@ -1,5 +1,5 @@
-import CollectionManager from "@/controllers/collection-manager.ts";
-import Protocol from "@/controllers/protocol.ts";
+import CollectionManager from '@/controllers/collection-manager.ts';
+import ProtocolV2 from '@/controllers/protocol-v2.ts';
 
 function startMemoryMonitor(intervalMs = 5000) {
   const collectionManager = CollectionManager.getInstance();
@@ -25,7 +25,7 @@ function startMemoryMonitor(intervalMs = 5000) {
 if (import.meta.main) {
   const collectionManager = CollectionManager.getInstance();
 
-  const protocol = Protocol.start(collectionManager);
+  const protocol = ProtocolV2.start(collectionManager);
 
   // startMemoryMonitor(1000); // log every 1s
 }

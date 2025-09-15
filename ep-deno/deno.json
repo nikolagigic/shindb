@@ -4,6 +4,7 @@
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
-    "@shindb/sdk": "../sdk/deno/mod.ts"
+    "@shindb/sdk": "../sdk/deno/mod.ts",
+    "@std/msgpack": "jsr:@std/msgpack@^1.0.3"
   }
 }

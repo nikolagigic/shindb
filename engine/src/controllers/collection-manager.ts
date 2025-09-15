@@ -8,10 +8,14 @@ export default class CollectionManager {
   public readonly mapManager = new MapManager(this.catalog);
 
   private constructor() {
+    // TODO: Remove this later
     this.catalog.set("users", {
-      name: {
+      username: {
         type: "string",
         modifiers: ["required", "unique"],
+      },
+      age: {
+        type: "number",
       },
     });
   }
