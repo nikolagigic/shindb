@@ -1,29 +1,28 @@
-import CollectionManager from '@/controllers/collection-manager.ts';
-import Logger from '../utils/logger.ts';
-
-const MAX_FRAME_BYTES = 256_000;
+// deno-lint-ignore-file no-explicit-any
+import CollectionManager from "@/controllers/collection-manager.ts";
+import Logger from "../utils/logger.ts";
+import { decode, encode } from "@std/msgpack";
 
 export default class Protocol {
   static instance: Protocol;
   private readonly listener: Deno.Listener;
   private isListening = false;
+  private readonly maxMessageSize = 100 * 1024 * 1024; // 100MB max per message
 
   static async start(collection: CollectionManager) {
     if (!this.instance) {
       this.instance = new Protocol(collection);
       await this.instance.listen();
     }
-
     return this.instance;
   }
 
   constructor(readonly collectionManager: CollectionManager) {
     this.listener = Deno.listen({
-      hostname: '127.0.0.1',
+      hostname: "127.0.0.1",
       port: 7333,
     });
-
-    Logger.success('Protocol running');
+    Logger.success("Protocol V2 running");
   }
 
   private async listen() {
@@ -37,186 +36,232 @@ export default class Protocol {
 
   private async handleConnection(connection: Deno.Conn) {
     try {
-      // read total length
-      const lengthBuffer = new Uint8Array(4);
-      await this.readExact(connection, lengthBuffer);
-      const totalLength = new DataView(lengthBuffer.buffer).getUint32(0, false);
-
-      Logger.success(`Expected total length: ${totalLength} bytes`);
-      Logger.warning(`====`);
-
-      // Handle chunked data reception
-      const data = new Uint8Array(totalLength);
-      let received = 0;
-      let chunkCount = 0;
-
-      // Read the first chunk (this comes after the length prefix in the first frame)
-      const firstChunkLength = Math.min(MAX_FRAME_BYTES, totalLength);
-      const firstChunk = new Uint8Array(firstChunkLength);
-      await this.readExact(connection, firstChunk);
-      data.set(firstChunk, received);
-      received += firstChunkLength;
-      chunkCount++;
-      Logger.success(`[${chunkCount}] Read first chunk: ${received} bytes`);
-
-      // Read remaining data in smaller chunks to avoid timeouts
-      while (received < totalLength) {
-        const remainingBytes = totalLength - received;
-        const chunkSize = Math.min(64 * 1024, remainingBytes); // 64KB chunks
-        Logger.info(
-          `Reading chunk ${
-            chunkCount + 1
-          }: expecting ${chunkSize} bytes, remaining: ${remainingBytes}`
+      while (true) {
+        // Read message length (4 bytes)
+        const lengthBuffer = await this.readExactly(connection, 4);
+        const messageLength = new DataView(lengthBuffer.buffer).getUint32(
+          0,
+          false
         );
-        const chunk = new Uint8Array(chunkSize);
-        await this.readExact(connection, chunk);
-        data.set(chunk, received);
-        received += chunkSize;
-        chunkCount++;
-        Logger.success(
-          `[${chunkCount}] Read chunk: ${received} bytes (chunk size: ${chunkSize})`
-        );
+
+        if (messageLength === 0) {
+          continue;
+        }
+
+        if (messageLength > this.maxMessageSize) {
+          throw new Error(
+            `Message too large: ${messageLength} bytes (max: ${this.maxMessageSize})`
+          );
+        }
+
+        Logger.info(`Reading message: ${messageLength} bytes`);
+
+        // Read message data in chunks to avoid timeouts
+        const messageData = await Promise.race([
+          this.readMessageData(connection, messageLength),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Message read timeout")), 30000)
+          ),
+        ]);
+
+        // Process message
+        const result = await this.processMessage(messageData);
+
+        // Send response
+        await this.sendResponse(connection, result);
+
+        Logger.success(`Processed message: ${messageLength} bytes`);
       }
-
-      Logger.success(
-        `Got full payload: ${data.length} bytes in ${chunkCount} chunks`
-      );
-    } catch (e) {
-      Logger.error(e);
+    } catch (e: any) {
+      if (e.message === "Connection closed") {
+        Logger.info("Client disconnected");
+      } else {
+        Logger.error(`Connection error: ${e.message}`);
+      }
+    } finally {
+      try {
+        connection.close();
+      } catch {
+        // Connection already closed
+      }
     }
   }
 
-  private async readExact(conn: Deno.Conn, buf: Uint8Array) {
-    let read = 0;
-    let count = 0;
-    Logger.info(`readExact: expecting ${buf.length} bytes`);
-    while (read < buf.length) {
-      const n = await conn.read(buf.subarray(read));
-      if (n === null) {
-        throw new Error(
-          `Connection closed: wanted ${buf.length}, got only ${read}`
-        );
-      }
-      read += n;
-      count++;
-      Logger.success(`[${count}] Read: ${read} bytes`);
+  private async readMessageData(
+    conn: Deno.Conn,
+    totalBytes: number
+  ): Promise<Uint8Array> {
+    const buffer = new Uint8Array(totalBytes);
+    let totalRead = 0;
+    let readCount = 0;
+    const chunkSize = 64 * 1024; // 64KB chunks
 
-      // Add timeout protection for large reads
-      if (count % 10 === 0) {
+    Logger.info(`readMessageData: expecting ${totalBytes} bytes`);
+
+    while (totalRead < totalBytes) {
+      const remainingBytes = totalBytes - totalRead;
+      const currentChunkSize = Math.min(chunkSize, remainingBytes);
+
+      const chunk = await conn.read(
+        buffer.subarray(totalRead, totalRead + currentChunkSize)
+      );
+      if (chunk === null) {
+        throw new Error("Connection closed");
+      }
+      totalRead += chunk;
+      readCount++;
+
+      if (readCount % 10 === 0 || totalRead === totalBytes) {
         Logger.info(
-          `Progress: ${read}/${buf.length} bytes (${Math.round(
-            (read / buf.length) * 100
+          `Progress: ${totalRead}/${totalBytes} bytes (${Math.round(
+            (totalRead / totalBytes) * 100
           )}%)`
         );
       }
     }
-    // optional debug, but say what actually happened:
-    Logger.success(`readExact filled ${buf.length} bytes`);
+
+    Logger.success(
+      `readMessageData: completed ${totalBytes} bytes in ${readCount} reads`
+    );
+    return buffer;
   }
 
-  // private async handleConnection(connection: Deno.Conn) {
-  //   try {
-  //     const lengthBuffer = new Uint8Array(4);
-  //     while (true) {
-  //       try {
-  //         await this.readExact(connection, lengthBuffer);
-  //       } catch {
-  //         break; // connection closed
-  //       }
+  private async readExactly(
+    conn: Deno.Conn,
+    bytes: number
+  ): Promise<Uint8Array> {
+    const buffer = new Uint8Array(bytes);
+    let totalRead = 0;
 
-  //       const msgLength = new DataView(lengthBuffer.buffer).getUint32(0, false);
+    while (totalRead < bytes) {
+      const chunk = await conn.read(buffer.subarray(totalRead));
+      if (chunk === null) {
+        throw new Error("Connection closed");
+      }
+      totalRead += chunk;
+    }
 
-  //       const msgBuffer = new Uint8Array(msgLength);
-  //       await this.readExact(connection, msgBuffer);
+    return buffer;
+  }
 
-  //       const { action, collection, payload } = decode(msgBuffer) as {
-  //         action: string;
-  //         collection: string;
-  //         payload: any;
-  //       };
+  private async processMessage(messageData: Uint8Array): Promise<any> {
+    try {
+      const { action, collection, payload } = decode(messageData) as {
+        action: string;
+        collection: string;
+        payload: any;
+      };
 
-  //       switch (action) {
-  //         case "create": {
-  //           const res = await this.collectionManager.mapManager.set(
-  //             collection,
-  //             payload
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "get": {
-  //           const res = await this.collectionManager.mapManager.get(
-  //             collection,
-  //             payload.docId
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "update": {
-  //           const { query, update } = payload;
-  //           const res = await this.collectionManager.mapManager.update(
-  //             collection,
-  //             query.docId,
-  //             update
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "delete": {
-  //           const res = await this.collectionManager.mapManager.delete(
-  //             collection,
-  //             payload.docId
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "createMany": {
-  //           const res = await this.collectionManager.mapManager.setMany(
-  //             collection,
-  //             payload
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "getMany": {
-  //           const res = await this.collectionManager.mapManager.getMany(
-  //             collection,
-  //             payload
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "updateMany": {
-  //           const res = await this.collectionManager.mapManager.updateMany(
-  //             collection,
-  //             payload
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         case "find": {
-  //           const res = await this.collectionManager.mapManager.find(
-  //             collection,
-  //             payload
-  //           );
-  //           await this.returnResponse(connection, res);
-  //           break;
-  //         }
-  //         default:
-  //           console.log(action, collection, payload);
-  //       }
-  //     }
-  //   } finally {
-  //     connection.close();
-  //   }
-  // }
+      Logger.info(`Processing action: ${action} on collection: ${collection}`);
 
-  // private async returnResponse(connection: Deno.Conn, res: any) {
-  //   const safe = res instanceof Map ? Object.fromEntries(res) : res;
-  //   const encoded = encode(safe) as Uint8Array;
-  //   const frame = new Uint8Array(4 + encoded.length);
-  //   new DataView(frame.buffer).setUint32(0, encoded.length, false);
-  //   frame.set(encoded, 4);
-  //   await connection.write(frame);
-  // }
+      switch (action) {
+        case "create": {
+          const res = await this.collectionManager.mapManager.set(
+            collection,
+            payload
+          );
+          return res;
+        }
+        case "get": {
+          const res = await this.collectionManager.mapManager.get(
+            collection,
+            payload.docId
+          );
+          return res;
+        }
+        case "update": {
+          const { query, update } = payload;
+          const res = await this.collectionManager.mapManager.update(
+            collection,
+            query.docId,
+            update
+          );
+          return res;
+        }
+        case "delete": {
+          const res = await this.collectionManager.mapManager.delete(
+            collection,
+            payload.docId
+          );
+          return res;
+        }
+        case "createMany": {
+          const res = await this.collectionManager.mapManager.setMany(
+            collection,
+            payload
+          );
+          return res;
+        }
+        case "getMany": {
+          const res = await this.collectionManager.mapManager.getMany(
+            collection,
+            payload
+          );
+          return res;
+        }
+        case "updateMany": {
+          const res = await this.collectionManager.mapManager.updateMany(
+            collection,
+            payload
+          );
+          return res;
+        }
+        case "find": {
+          const res = await this.collectionManager.mapManager.find(
+            collection,
+            payload
+          );
+          return res;
+        }
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
+    } catch (e: any) {
+      Logger.error(`Error processing message: ${e.message}`);
+      throw e;
+    }
+  }
+
+  private async sendDataInChunks(
+    connection: Deno.Conn,
+    data: Uint8Array
+  ): Promise<void> {
+    const chunkSize = 64 * 1024; // 64KB chunks
+    let offset = 0;
+
+    while (offset < data.length) {
+      const remainingBytes = data.length - offset;
+      const currentChunkSize = Math.min(chunkSize, remainingBytes);
+      const chunk = data.subarray(offset, offset + currentChunkSize);
+
+      await connection.write(chunk);
+      offset += currentChunkSize;
+
+      // Small delay to allow TCP flow control
+      if (offset < data.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  }
+
+  private async sendResponse(connection: Deno.Conn, response: any) {
+    try {
+      const safe =
+        response instanceof Map ? Object.fromEntries(response) : response;
+      const encoded = encode(safe) as Uint8Array;
+
+      // Send length prefix
+      const lengthBuffer = new Uint8Array(4);
+      new DataView(lengthBuffer.buffer).setUint32(0, encoded.length, false);
+      await connection.write(lengthBuffer);
+
+      // Send response data in chunks
+      Logger.info(`Sending response: ${encoded.length} bytes`);
+      await this.sendDataInChunks(connection, encoded);
+      Logger.success(`Sent response: ${encoded.length} bytes`);
+    } catch (e: any) {
+      Logger.error(`Error sending response: ${e.message}`);
+      throw e;
+    }
+  }
 }

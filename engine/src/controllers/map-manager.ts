@@ -4,10 +4,10 @@ import {
   DataStore,
   DocId,
   CollectionName,
-} from "@/services/data-store.ts";
-import { Response, Status } from "@/types/operations.ts";
-import { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
-import Archive from "@/services/archive.ts";
+} from '@/services/data-store.ts';
+import { Response, Status } from '@/types/operations.ts';
+import { InMemoryCollectionsCatalog } from '@/services/collections-catalog.ts';
+import Archive from '@/services/archive.ts';
 
 const MAX_ALLOCATED_ENTRIES = 6_000_000;
 
@@ -127,7 +127,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     return currentMap.map.set(name, doc);
   }
 
-  update(name: CollectionName, docId: DocId, doc: V) {
+  update(name: CollectionName, docId: DocId, doc: V): Response<{ id: DocId; doc: V }> {
     const res = this.findIdInMap(name, docId);
     if (!res) return { status: Status.ERROR };
 
@@ -250,14 +250,14 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   }
 
   private matchesWhere(doc: any, where: WhereQuery | Condition): boolean {
-    if ("field" in where) {
+    if ('field' in where) {
       const value = doc[where.field];
       return this.evaluateOperators(value, where.op);
     }
-    if ("AND" in where) {
+    if ('AND' in where) {
       return where.AND.every((sub) => this.matchesWhere(doc, sub));
     }
-    if ("OR" in where) {
+    if ('OR' in where) {
       return where.OR.some((sub) => this.matchesWhere(doc, sub));
     }
     return true;
@@ -277,7 +277,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     if (ops.contains) {
       if (Array.isArray(value)) {
         ok &&= value.includes(ops.contains);
-      } else if (typeof value === "string") {
+      } else if (typeof value === 'string') {
         ok &&= value.includes(String(ops.contains));
       } else {
         ok = false;

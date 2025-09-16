@@ -30,23 +30,23 @@ type DocId = number;
 
 export type Table = {
   [name: string]: {
-    type: 'string' | 'number' | 'boolean';
-    modifiers?: ('unique' | 'required' | 'indexed')[];
+    type: "string" | "number" | "boolean";
+    modifiers?: ("unique" | "required" | "indexed")[];
   };
 };
 
-type TypeMap<T extends 'string' | 'number' | 'boolean'> = T extends 'string'
+type TypeMap<T extends "string" | "number" | "boolean"> = T extends "string"
   ? string
-  : T extends 'number'
+  : T extends "number"
   ? number
-  : T extends 'boolean'
+  : T extends "boolean"
   ? boolean
   : never;
 
 type InferRow<T extends Table> = {
-  [K in keyof T]: T[K]['modifiers'] extends Array<'required' | any>
-    ? TypeMap<T[K]['type']>
-    : TypeMap<T[K]['type']> | undefined;
+  [K in keyof T]: T[K]["modifiers"] extends Array<"required" | any>
+    ? TypeMap<T[K]["type"]>
+    : TypeMap<T[K]["type"]> | undefined;
 };
 
 // server adds this automatically
@@ -57,23 +57,23 @@ type RowWithId<T extends Table> = InferRow<T> & { id: number };
 type ActionPayload<
   T extends Table,
   A extends keyof ActionResponse<T>
-> = A extends 'create'
+> = A extends "create"
   ? InferRow<T>
-  : A extends 'get'
+  : A extends "get"
   ? { docId: number }
-  : A extends 'update'
+  : A extends "update"
   ? { query: { docId: number }; update: Partial<InferRow<T>> }
-  : A extends 'delete'
+  : A extends "delete"
   ? { docId: number }
-  : A extends 'createMany'
+  : A extends "createMany"
   ? InferRow<T>[]
-  : A extends 'getMany'
+  : A extends "getMany"
   ? number[]
-  : A extends 'updateMany'
+  : A extends "updateMany"
   ? { query: Partial<RowWithId<T>>; update: Partial<InferRow<T>> }
-  : A extends 'deleteMany'
+  : A extends "deleteMany"
   ? Partial<RowWithId<T>>
-  : A extends 'find'
+  : A extends "find"
   ? WhereQuery<T>
   : never;
 
@@ -83,7 +83,7 @@ type ActionResponse<T extends Table> = {
   update: RowWithId<T>;
   delete: { success: boolean };
 
-  createMany: RowWithId<T>[];
+  createMany: { status: number; data: { ids: number[] } };
   getMany: RowWithId<T>[];
   updateMany: RowWithId<T>[];
   deleteMany: { success: boolean; count: number };
@@ -91,29 +91,43 @@ type ActionResponse<T extends Table> = {
   find: RowWithId<T>[]; // new
 };
 
-// ------------------ Client ------------------
+// Batch operation response types
+type BatchResponse<T extends Table, A extends keyof ActionResponse<T>> = {
+  status: number;
+  data: A extends "createMany"
+    ? { ids: number[] }
+    : A extends "getMany"
+    ? RowWithId<T>[]
+    : A extends "updateMany"
+    ? RowWithId<T>[]
+    : A extends "deleteMany"
+    ? { success: boolean; count: number }
+    : never;
+};
 
-import { autobindStatics } from '../utils/autobind-statics.ts';
-import { bytesToMB } from '../utils/bytesToMB.ts';
-import { encode, decode } from '@std/msgpack';
-import Logger from '../utils/logger.ts';
+// ------------------ Client V2 ------------------
 
-const MAX_FRAME_BYTES = 256_000; // ~256KB per frame
+import { autobindStatics } from "../utils/autobind-statics.ts";
+import { encode, decode } from "@std/msgpack";
+import Logger from "../utils/logger.ts";
+// import { bytesToMB } from "../utils/bytesToMB.ts";
 
 export class Client {
   private static connection: Deno.TcpConn | null = null;
 
   static async setup(
-    options: Deno.ConnectOptions = { hostname: '127.0.0.1', port: 7333 }
+    options: Deno.ConnectOptions = { hostname: "127.0.0.1", port: 7333 }
   ) {
     if (this.connection) return;
     this.connection = await Deno.connect(options);
+    Logger.success("Connected to server");
   }
 
   static disconnect() {
     if (this.connection) {
       this.connection.close();
       this.connection = null;
+      Logger.info("Disconnected from server");
     }
   }
 
@@ -122,121 +136,214 @@ export class Client {
     action: A,
     payload: ActionPayload<T, A>
   ): Promise<ActionResponse<T>[A]> {
-    const encoded = encode({
+    if (!this.connection) {
+      throw new Error("Not connected. Call setup() first.");
+    }
+
+    // Encode the message
+    const message = {
       action,
       collection,
-      payload: payload as import('@std/msgpack').ValueType,
-    }) as Uint8Array;
+      payload: payload as import("@std/msgpack").ValueType,
+    };
 
-    if (encoded.length === 0) {
-      throw new Error('Empty payload not allowed');
+    const encoded = encode(message) as Uint8Array;
+
+    // Send message length (4 bytes)
+    const lengthBuffer = new Uint8Array(4);
+    new DataView(lengthBuffer.buffer).setUint32(0, encoded.length, false);
+    await this.connection.write(lengthBuffer);
+
+    // Send message data in chunks to avoid TCP buffering issues
+    await this.sendDataInChunks(encoded);
+
+    // Read response length (4 bytes)
+    const responseLengthBuffer = await this.readExactly(4);
+    const responseLength = new DataView(responseLengthBuffer.buffer).getUint32(
+      0,
+      false
+    );
+
+    // Read response data in chunks
+    const responseData = await this.readDataInChunks(responseLength);
+
+    const response = decode(responseData) as ActionResponse<T>[A];
+
+    return response;
+  }
+
+  private static async sendDataInChunks(data: Uint8Array): Promise<void> {
+    if (!this.connection) {
+      throw new Error("Not connected");
     }
 
-    if (encoded.length <= MAX_FRAME_BYTES) {
-      return await this.writeAndRead<T, A>(encoded);
-    }
+    const chunkSize = 64 * 1024; // 64KB chunks
+    let offset = 0;
 
-    let chunksSum = 0;
-    let count = 0;
-    for (let i = 0; i < encoded.length; i += MAX_FRAME_BYTES) {
-      const chunk = encoded.subarray(i, i + MAX_FRAME_BYTES);
-      chunksSum += chunk.length;
-      count++;
-      Logger.success(`[${count}] Sent: ${chunksSum} total bytes`);
-      if (i === 0) {
-        await this.writeFirstFrame(encoded.length, chunk);
-      } else if (i + MAX_FRAME_BYTES >= encoded.length) {
-        return await this.writeLastFrame<T, A>(chunk);
-      } else {
-        await this.writeMidFrame(chunk);
+    while (offset < data.length) {
+      const remainingBytes = data.length - offset;
+      const currentChunkSize = Math.min(chunkSize, remainingBytes);
+      const chunk = data.subarray(offset, offset + currentChunkSize);
+
+      await this.connection.write(chunk);
+      offset += currentChunkSize;
+
+      // Small delay to allow TCP flow control
+      if (offset < data.length) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
       }
     }
-
-    throw new Error('Something went wrong');
   }
 
-  private static async readExact(buf: Uint8Array) {
-    let offset = 0;
-    while (offset < buf.length) {
-      const n = await this.connection!.read(buf.subarray(offset));
-      if (n === null) throw new Error('Server closed connection mid-read');
-      offset += n;
+  private static async readDataInChunks(
+    totalBytes: number
+  ): Promise<Uint8Array> {
+    if (!this.connection) {
+      throw new Error("Not connected");
     }
-    return buf;
+
+    const buffer = new Uint8Array(totalBytes);
+    let totalRead = 0;
+    const chunkSize = 64 * 1024; // 64KB chunks
+
+    while (totalRead < totalBytes) {
+      const remainingBytes = totalBytes - totalRead;
+      const currentChunkSize = Math.min(chunkSize, remainingBytes);
+
+      const chunk = await this.connection.read(
+        buffer.subarray(totalRead, totalRead + currentChunkSize)
+      );
+      if (chunk === null) {
+        throw new Error("Connection closed by server");
+      }
+      totalRead += chunk;
+    }
+
+    return buffer;
   }
 
-  private static async writeFirstFrame(totalLength: number, chunk: Uint8Array) {
-    const frame = new Uint8Array(4 + chunk.length);
-    new DataView(frame.buffer).setUint32(0, totalLength, false);
-    frame.set(chunk, 4);
-    await this.connection!.write(frame);
+  private static async readExactly(bytes: number): Promise<Uint8Array> {
+    if (!this.connection) {
+      throw new Error("Not connected");
+    }
+
+    const buffer = new Uint8Array(bytes);
+    let totalRead = 0;
+
+    while (totalRead < bytes) {
+      const chunk = await this.connection.read(buffer.subarray(totalRead));
+      if (chunk === null) {
+        throw new Error("Connection closed by server");
+      }
+      totalRead += chunk;
+    }
+
+    return buffer;
   }
 
-  private static async writeMidFrame(chunk: Uint8Array) {
-    await this.connection!.write(chunk);
-  }
-
-  private static async writeLastFrame<
+  private static async processBatchOperation<
     T extends Table,
     A extends keyof ActionResponse<T>
-  >(chunk: Uint8Array): Promise<ActionResponse<T>[A]> {
-    await this.connection!.write(chunk);
+  >(
+    _collection: string,
+    action: A,
+    items: unknown[],
+    batchProcessor: (batch: unknown[]) => Promise<BatchResponse<T, A>>,
+    resultAggregator: (
+      results: BatchResponse<T, A>,
+      batchResult: BatchResponse<T, A>
+    ) => void
+  ): Promise<BatchResponse<T, A>> {
+    const itemsLength = items.length;
+    const MAX_ITEMS_PER_REQUEST = 1_000;
+    const results = { status: 0, data: {} } as BatchResponse<T, A>;
 
-    // response handling
-    const lengthBuf = new Uint8Array(4);
-    await this.readExact(lengthBuf);
-    const msgLength = new DataView(lengthBuf.buffer).getUint32(0, false);
+    // Initialize the data structure based on the action type
+    if (action === "createMany") {
+      (results as any).data = { ids: [] };
+    } else if (action === "getMany" || action === "updateMany") {
+      (results as any).data = [];
+    } else if (action === "deleteMany") {
+      (results as any).data = { success: true, count: 0 };
+    }
 
-    const msgBuf = new Uint8Array(msgLength);
-    await this.readExact(msgBuf);
+    try {
+      // Process in batches with a single loop
+      for (let i = 0; i < itemsLength; i += MAX_ITEMS_PER_REQUEST) {
+        const batch = items.slice(i, i + MAX_ITEMS_PER_REQUEST);
+        const batchResult = await batchProcessor(batch);
 
-    return decode(msgBuf) as ActionResponse<T>[A];
-  }
+        if (batchResult.status !== 0) {
+          throw new Error(`Error processing batch for ${action}`);
+        }
 
-  private static async writeAndRead<
-    T extends Table,
-    A extends keyof ActionResponse<T>
-  >(payload: Uint8Array): Promise<ActionResponse<T>[A]> {
-    // write frame
-    const frame = new Uint8Array(4 + payload.length);
-    new DataView(frame.buffer).setUint32(0, payload.length, false);
-    frame.set(payload, 4);
-    await this.connection!.write(frame);
+        resultAggregator(results, batchResult);
+      }
+    } catch (e) {
+      throw e;
+    }
 
-    // read length prefix
-    const lengthBuf = new Uint8Array(4);
-    await this.readExact(lengthBuf);
-    const msgLength = new DataView(lengthBuf.buffer).getUint32(0, false);
-
-    // read response body
-    const msgBuf = new Uint8Array(msgLength);
-    await this.readExact(msgBuf);
-
-    return decode(msgBuf) as ActionResponse<T>[A];
+    return results;
   }
 
   static collection<T extends Table>(name: string, _table: T) {
-    if (!this.connection) throw new Error('Call setup() first');
+    if (!this.connection) throw new Error("Call setup() first");
 
     return {
-      create: (doc: InferRow<T>) => this.send<T, 'create'>(name, 'create', doc),
-      get: (query: { docId: DocId }) => this.send<T, 'get'>(name, 'get', query),
+      create: (doc: InferRow<T>) => this.send<T, "create">(name, "create", doc),
+      get: (query: { docId: DocId }) => this.send<T, "get">(name, "get", query),
       update: (query: { docId: DocId }, update: Partial<InferRow<T>>) =>
-        this.send<T, 'update'>(name, 'update', { query, update }),
+        this.send<T, "update">(name, "update", { query, update }),
       delete: (query: { docId: DocId }) =>
-        this.send<T, 'delete'>(name, 'delete', query),
+        this.send<T, "delete">(name, "delete", query),
 
-      createMany: (docs: InferRow<T>[]) =>
-        this.send<T, 'createMany'>(name, 'createMany', docs),
-      getMany: (ids: DocId[]) => this.send<T, 'getMany'>(name, 'getMany', ids),
+      createMany: (docs: InferRow<T>[]) => {
+        return this.processBatchOperation(
+          name,
+          "createMany",
+          docs,
+          async (batch) => {
+            const response = await this.send<T, "createMany">(
+              name,
+              "createMany",
+              batch as InferRow<T>[]
+            );
+            // The server already returns the response in the correct format
+            return response as BatchResponse<T, "createMany">;
+          },
+          (results, batchResult) => {
+            results.data.ids.push(...batchResult.data.ids);
+          }
+        );
+      },
+      getMany: (ids: DocId[]) => this.send<T, "getMany">(name, "getMany", ids),
+      // getMany: (ids: DocId[]) => {
+      //   return this.processBatchOperation(
+      //     name,
+      //     "getMany",
+      //     ids,
+      //     async (batch) => {
+      //       const response = await this.send<T, "getMany">(
+      //         name,
+      //         "getMany",
+      //         ids
+      //       );
+
+      //       return response as BatchResponse<T, "getMany">;
+      //     },
+      //     (results, batchResult) => {
+      //       results.data.push(...batchResult.data);
+      //     }
+      //   );
+      // },
       updateMany: (
         query: Partial<RowWithId<T>>,
         update: Partial<InferRow<T>>
-      ) => this.send<T, 'updateMany'>(name, 'updateMany', { query, update }),
+      ) => this.send<T, "updateMany">(name, "updateMany", { query, update }),
       deleteMany: (query: Partial<RowWithId<T>>) =>
-        this.send<T, 'deleteMany'>(name, 'deleteMany', query),
+        this.send<T, "deleteMany">(name, "deleteMany", query),
 
-      find: (where: WhereQuery<T>) => this.send<T, 'find'>(name, 'find', where),
+      find: (where: WhereQuery<T>) => this.send<T, "find">(name, "find", where),
     };
   }
 }

@@ -1,6 +1,6 @@
-import { Response, Status } from "@/types/operations.ts";
-import { CollectionsCatalog } from "./collections-catalog.ts";
-import Archive from "./archive.ts";
+import { Response, Status } from '@/types/operations.ts';
+import { CollectionsCatalog } from './collections-catalog.ts';
+import Archive from './archive.ts';
 
 export type CollectionName = string;
 export type DocId = number;
@@ -42,7 +42,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
   private readonly data: Map<CollectionName, CollectionState<V>> = new Map();
 
   constructor(
-    private readonly catalog: Pick<CollectionsCatalog, "exists">,
+    private readonly catalog: Pick<CollectionsCatalog, 'exists'>,
     private readonly archive: Archive
   ) {}
 
