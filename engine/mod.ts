@@ -1,10 +1,5 @@
-import {
-  getCatalog,
-  getMapManager,
-  setup,
-} from "@/controllers/collection-manager.ts";
+import CollectionManager from "@/controllers/collection-manager.ts";
 
-const catalog: ReturnType<typeof getCatalog> = getCatalog();
-const store: ReturnType<typeof getMapManager> = getMapManager();
+const collectionManager: CollectionManager = CollectionManager.setup();
 
-export { catalog, setup, store };
+export default collectionManager.sdk;

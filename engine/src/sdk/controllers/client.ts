@@ -8,9 +8,34 @@ import type {
   TableToUpdateWithIdType,
 } from "@/types/collection-manager.ts";
 import Logger from "@/utils/logger.ts";
-import { Status } from "@/types/operations.ts";
+import { type Response, Status } from "@/types/operations.ts";
 import type { DocId } from "@/services/data-store.ts";
 import type { FindQuery } from "@/types/collection-manager.ts";
+
+type CollectionCrud<T extends Table> = {
+  create: (data: TableToType<T>) => Promise<Response<{ id: number }>>;
+  get: (id: DocId) => Response<{ id: number; doc: TableToType<T> }>;
+  update: (id: DocId, doc: TableToUpdateType<T>) => void;
+  delete: (id: DocId) => void;
+  createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
+};
+
+type CollectionMany<T extends Table> = {
+  createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
+  getMany: (ids: DocId[]) => Response<{ id: number; doc: TableToType<T> }[]>;
+  updateMany: (data: TableToUpdateWithIdType<T>[]) => void;
+  deleteMany: (ids: DocId[]) => void;
+};
+
+type CollectionFind<T extends Table> = {
+  find: (
+    where: FindQuery<T>
+  ) => Response<{ id: number; doc: TableToType<T> }[]>;
+};
+
+type Collection<T extends Table> = CollectionCrud<T> &
+  CollectionMany<T> &
+  CollectionFind<T>;
 
 export class Client {
   constructor(
@@ -18,7 +43,7 @@ export class Client {
     private readonly mapManager: MapManager<any>
   ) {}
 
-  public collection<T extends Table>(name: string, _table: T) {
+  public collection<T extends Table>(name: string, _table: T): Collection<T> {
     const c = this.catalog.set(name, _table);
 
     if (c.status === Status.OK) {
