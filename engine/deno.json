@@ -1,7 +1,7 @@
 {
   "name": "@shindb/engine",
   "license": "MIT",
-  "version": "0.1.0-dev",
+  "version": "0.1.1-dev",
   "exports": "./mod.ts",
   "imports": {
     "@/": "./src/",

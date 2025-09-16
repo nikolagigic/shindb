@@ -297,45 +297,9 @@ export class Client {
       delete: (query: { docId: DocId }) =>
         this.send<T, "delete">(name, "delete", query),
 
-      createMany: (docs: InferRow<T>[]) => {
-        return this.processBatchOperation(
-          name,
-          "createMany",
-          docs,
-          async (batch) => {
-            const response = await this.send<T, "createMany">(
-              name,
-              "createMany",
-              batch as InferRow<T>[]
-            );
-            // The server already returns the response in the correct format
-            return response as BatchResponse<T, "createMany">;
-          },
-          (results, batchResult) => {
-            results.data.ids.push(...batchResult.data.ids);
-          }
-        );
-      },
+      createMany: (docs: InferRow<T>[]) =>
+        this.send<T, "createMany">(name, "createMany", docs),
       getMany: (ids: DocId[]) => this.send<T, "getMany">(name, "getMany", ids),
-      // getMany: (ids: DocId[]) => {
-      //   return this.processBatchOperation(
-      //     name,
-      //     "getMany",
-      //     ids,
-      //     async (batch) => {
-      //       const response = await this.send<T, "getMany">(
-      //         name,
-      //         "getMany",
-      //         ids
-      //       );
-
-      //       return response as BatchResponse<T, "getMany">;
-      //     },
-      //     (results, batchResult) => {
-      //       results.data.push(...batchResult.data);
-      //     }
-      //   );
-      // },
       updateMany: (
         query: Partial<RowWithId<T>>,
         update: Partial<InferRow<T>>

@@ -2,16 +2,16 @@ import Logger from "../utils/logger.ts";
 
 export default class Archive {
   static instance: Archive;
-  private file: Deno.FsFile;
+  private file: Deno.FsFile | null = null;
   private buf: Uint8Array[] = [];
   private bufSize = 0;
   private readonly FLUSH_BYTES = 4 * 1024;
 
   constructor() {
-    this.file = Deno.openSync("./archive/records.aof", {
-      append: true,
-      create: true,
-    });
+    // this.file = Deno.openSync("./archive/records.aof", {
+    //   append: true,
+    //   create: true,
+    // });
 
     Logger.success("Archive set-up");
   }
@@ -42,13 +42,13 @@ export default class Archive {
       offset += chunk.length;
     }
 
-    this.file.writeSync(joined);
+    this.file?.writeSync(joined);
     this.buf = [];
     this.bufSize = 0;
   }
 
   public close() {
     this.flush();
-    this.file.close();
+    this.file?.close();
   }
 }
