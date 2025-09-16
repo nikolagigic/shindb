@@ -1,15 +1,14 @@
 import { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
 import MapManager from "@/controllers/map-manager.ts";
-import { autobindStatics } from "@/utils/autobind-statics.ts";
+import { Client } from "@/sdk/controllers/client.ts";
 
 export default class CollectionManager {
   private static instance: CollectionManager;
 
-  public static readonly catalog: InMemoryCollectionsCatalog =
+  private readonly catalog: InMemoryCollectionsCatalog =
     new InMemoryCollectionsCatalog();
-  public static readonly mapManager: MapManager<any> = new MapManager(
-    this.catalog
-  );
+  private readonly mapManager: MapManager<any> = new MapManager(this.catalog);
+  public readonly sdk: Client = new Client(this.catalog, this.mapManager);
 
   public static setup(): CollectionManager {
     if (!this.instance) {
@@ -18,16 +17,4 @@ export default class CollectionManager {
 
     return this.instance;
   }
-
-  public static getCatalog = () => this.catalog;
-  public static getMapManager = () => this.mapManager;
 }
-
-const boundMethods: Pick<
-  typeof CollectionManager,
-  "setup" | "getCatalog" | "getMapManager"
-> = autobindStatics(CollectionManager);
-
-export const setup = boundMethods.setup;
-export const getCatalog = boundMethods.getCatalog;
-export const getMapManager = boundMethods.getMapManager;

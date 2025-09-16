@@ -1,31 +1,74 @@
 import CollectionManager from "@/controllers/collection-manager.ts";
-import Protocol from "@/controllers/protocol.ts";
-
-function startMemoryMonitor(intervalMs = 5000) {
-  const collectionManager = CollectionManager.setup();
-  setInterval(() => {
-    const entriesCount = collectionManager.mapManager.size() ?? 0;
-    const mapsCount = collectionManager.mapManager.mapsCount() ?? 0;
-    const usage = Deno.memoryUsage();
-    console.clear();
-    console.log(
-      `[MEMORY] rss=${(usage.rss / 1024 / 1024).toFixed(2)}MB | heapUsed=${(
-        usage.heapUsed /
-        1024 /
-        1024
-      ).toFixed(2)}MB | heapTotal=${(usage.heapTotal / 1024 / 1024).toFixed(
-        2
-      )}MB | external=${(usage.external / 1024 / 1024).toFixed(
-        2
-      )}MB | entriesCount=${entriesCount} | mapsCount=${mapsCount}`
-    );
-  }, intervalMs);
-}
+import type { FindQuery } from "@/types/collection-manager.ts";
+import Logger from "@/utils/logger.ts";
 
 if (import.meta.main) {
   const collectionManager = CollectionManager.setup();
+  const usersModel = collectionManager.sdk.collection("users", {
+    username: {
+      type: "string",
+      modifiers: ["required"],
+    },
+    age: {
+      type: "number",
+    },
+  });
 
-  const protocol = Protocol.start(collectionManager);
+  await usersModel.create({ username: "john_doe" });
+  let user = usersModel.get(0);
+  Logger.success("[CREATE]", user);
 
-  // startMemoryMonitor(1000); // log every 1s
+  usersModel.update(0, { age: 29, username: "jane_doe" });
+  user = usersModel.get(0);
+  Logger.success("[UPDATE]", user);
+
+  usersModel.delete(0);
+  user = usersModel.get(0);
+  Logger.success("[DELETE]", user);
+
+  const createdUsers = await usersModel.createMany([
+    {
+      username: "user_1",
+    },
+    {
+      username: "user_2",
+      age: 29,
+    },
+  ]);
+  const ids = createdUsers.data?.ids ?? [];
+  let users = usersModel.getMany(ids);
+  Logger.success("[CREATE MANY]", users);
+
+  const toUpdateUsers = users.data?.map((user) => ({
+    id: user.id,
+    doc: {
+      username: `user_${user.id}${user.id}`,
+    },
+  })) ?? [];
+
+  usersModel.updateMany(toUpdateUsers);
+  users = usersModel.getMany(ids);
+  Logger.success("[UPDATE MANY]", users);
+
+  usersModel.deleteMany(ids);
+  users = usersModel.getMany(ids);
+  Logger.success("[DELETE MANY]", users);
+
+  const createdUsersWhereQuery = await usersModel.createMany([
+    {
+      username: "user_1",
+    },
+    {
+      username: "user_2",
+      age: 29,
+    },
+  ]);
+
+  users = usersModel.find({
+    AND: [
+      { field: "username", op: { eq: "user_2" } },
+      { field: "age", op: { eq: 29 } },
+    ],
+  });
+  Logger.success("[FIND]", users);
 }

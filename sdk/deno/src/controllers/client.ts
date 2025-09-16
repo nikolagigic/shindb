@@ -37,10 +37,8 @@ export type Table = {
 
 type TypeMap<T extends "string" | "number" | "boolean"> = T extends "string"
   ? string
-  : T extends "number"
-  ? number
-  : T extends "boolean"
-  ? boolean
+  : T extends "number" ? number
+  : T extends "boolean" ? boolean
   : never;
 
 type InferRow<T extends Table> = {
@@ -56,25 +54,18 @@ type RowWithId<T extends Table> = InferRow<T> & { id: number };
 
 type ActionPayload<
   T extends Table,
-  A extends keyof ActionResponse<T>
-> = A extends "create"
-  ? InferRow<T>
-  : A extends "get"
-  ? { docId: number }
+  A extends keyof ActionResponse<T>,
+> = A extends "create" ? InferRow<T>
+  : A extends "get" ? { docId: number }
   : A extends "update"
-  ? { query: { docId: number }; update: Partial<InferRow<T>> }
-  : A extends "delete"
-  ? { docId: number }
-  : A extends "createMany"
-  ? InferRow<T>[]
-  : A extends "getMany"
-  ? number[]
+    ? { query: { docId: number }; update: Partial<InferRow<T>> }
+  : A extends "delete" ? { docId: number }
+  : A extends "createMany" ? InferRow<T>[]
+  : A extends "getMany" ? number[]
   : A extends "updateMany"
-  ? { query: Partial<RowWithId<T>>; update: Partial<InferRow<T>> }
-  : A extends "deleteMany"
-  ? Partial<RowWithId<T>>
-  : A extends "find"
-  ? WhereQuery<T>
+    ? { query: Partial<RowWithId<T>>; update: Partial<InferRow<T>> }
+  : A extends "deleteMany" ? Partial<RowWithId<T>>
+  : A extends "find" ? WhereQuery<T>
   : never;
 
 type ActionResponse<T extends Table> = {
@@ -94,21 +85,17 @@ type ActionResponse<T extends Table> = {
 // Batch operation response types
 type BatchResponse<T extends Table, A extends keyof ActionResponse<T>> = {
   status: number;
-  data: A extends "createMany"
-    ? { ids: number[] }
-    : A extends "getMany"
-    ? RowWithId<T>[]
-    : A extends "updateMany"
-    ? RowWithId<T>[]
-    : A extends "deleteMany"
-    ? { success: boolean; count: number }
+  data: A extends "createMany" ? { ids: number[] }
+    : A extends "getMany" ? RowWithId<T>[]
+    : A extends "updateMany" ? RowWithId<T>[]
+    : A extends "deleteMany" ? { success: boolean; count: number }
     : never;
 };
 
 // ------------------ Client V2 ------------------
 
 import { autobindStatics } from "../utils/autobind-statics.ts";
-import { encode, decode } from "@std/msgpack";
+import { decode, encode } from "@std/msgpack";
 import Logger from "../utils/logger.ts";
 // import { bytesToMB } from "../utils/bytesToMB.ts";
 
@@ -116,7 +103,7 @@ export class Client {
   private static connection: Deno.TcpConn | null = null;
 
   static async setup(
-    options: Deno.ConnectOptions = { hostname: "127.0.0.1", port: 7333 }
+    options: Deno.ConnectOptions = { hostname: "127.0.0.1", port: 7333 },
   ) {
     if (this.connection) return;
     this.connection = await Deno.connect(options);
@@ -134,7 +121,7 @@ export class Client {
   private static async send<T extends Table, A extends keyof ActionResponse<T>>(
     collection: string,
     action: A,
-    payload: ActionPayload<T, A>
+    payload: ActionPayload<T, A>,
   ): Promise<ActionResponse<T>[A]> {
     if (!this.connection) {
       throw new Error("Not connected. Call setup() first.");
@@ -161,7 +148,7 @@ export class Client {
     const responseLengthBuffer = await this.readExactly(4);
     const responseLength = new DataView(responseLengthBuffer.buffer).getUint32(
       0,
-      false
+      false,
     );
 
     // Read response data in chunks
@@ -196,7 +183,7 @@ export class Client {
   }
 
   private static async readDataInChunks(
-    totalBytes: number
+    totalBytes: number,
   ): Promise<Uint8Array> {
     if (!this.connection) {
       throw new Error("Not connected");
@@ -211,7 +198,7 @@ export class Client {
       const currentChunkSize = Math.min(chunkSize, remainingBytes);
 
       const chunk = await this.connection.read(
-        buffer.subarray(totalRead, totalRead + currentChunkSize)
+        buffer.subarray(totalRead, totalRead + currentChunkSize),
       );
       if (chunk === null) {
         throw new Error("Connection closed by server");
@@ -243,7 +230,7 @@ export class Client {
 
   private static async processBatchOperation<
     T extends Table,
-    A extends keyof ActionResponse<T>
+    A extends keyof ActionResponse<T>,
   >(
     _collection: string,
     action: A,
@@ -251,8 +238,8 @@ export class Client {
     batchProcessor: (batch: unknown[]) => Promise<BatchResponse<T, A>>,
     resultAggregator: (
       results: BatchResponse<T, A>,
-      batchResult: BatchResponse<T, A>
-    ) => void
+      batchResult: BatchResponse<T, A>,
+    ) => void,
   ): Promise<BatchResponse<T, A>> {
     const itemsLength = items.length;
     const MAX_ITEMS_PER_REQUEST = 1_000;
@@ -302,7 +289,7 @@ export class Client {
       getMany: (ids: DocId[]) => this.send<T, "getMany">(name, "getMany", ids),
       updateMany: (
         query: Partial<RowWithId<T>>,
-        update: Partial<InferRow<T>>
+        update: Partial<InferRow<T>>,
       ) => this.send<T, "updateMany">(name, "updateMany", { query, update }),
       deleteMany: (query: Partial<RowWithId<T>>) =>
         this.send<T, "deleteMany">(name, "deleteMany", query),

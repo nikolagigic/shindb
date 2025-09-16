@@ -41,7 +41,7 @@ export default class Protocol {
         const lengthBuffer = await this.readExactly(connection, 4);
         const messageLength = new DataView(lengthBuffer.buffer).getUint32(
           0,
-          false
+          false,
         );
 
         if (messageLength === 0) {
@@ -50,7 +50,7 @@ export default class Protocol {
 
         if (messageLength > this.maxMessageSize) {
           throw new Error(
-            `Message too large: ${messageLength} bytes (max: ${this.maxMessageSize})`
+            `Message too large: ${messageLength} bytes (max: ${this.maxMessageSize})`,
           );
         }
 
@@ -89,7 +89,7 @@ export default class Protocol {
 
   private async readMessageData(
     conn: Deno.Conn,
-    totalBytes: number
+    totalBytes: number,
   ): Promise<Uint8Array> {
     const buffer = new Uint8Array(totalBytes);
     let totalRead = 0;
@@ -103,7 +103,7 @@ export default class Protocol {
       const currentChunkSize = Math.min(chunkSize, remainingBytes);
 
       const chunk = await conn.read(
-        buffer.subarray(totalRead, totalRead + currentChunkSize)
+        buffer.subarray(totalRead, totalRead + currentChunkSize),
       );
       if (chunk === null) {
         throw new Error("Connection closed");
@@ -113,22 +113,24 @@ export default class Protocol {
 
       if (readCount % 10 === 0 || totalRead === totalBytes) {
         Logger.info(
-          `Progress: ${totalRead}/${totalBytes} bytes (${Math.round(
-            (totalRead / totalBytes) * 100
-          )}%)`
+          `Progress: ${totalRead}/${totalBytes} bytes (${
+            Math.round(
+              (totalRead / totalBytes) * 100,
+            )
+          }%)`,
         );
       }
     }
 
     Logger.success(
-      `readMessageData: completed ${totalBytes} bytes in ${readCount} reads`
+      `readMessageData: completed ${totalBytes} bytes in ${readCount} reads`,
     );
     return buffer;
   }
 
   private async readExactly(
     conn: Deno.Conn,
-    bytes: number
+    bytes: number,
   ): Promise<Uint8Array> {
     const buffer = new Uint8Array(bytes);
     let totalRead = 0;
@@ -158,14 +160,14 @@ export default class Protocol {
         case "create": {
           const res = await this.collectionManager.mapManager.set(
             collection,
-            payload
+            payload,
           );
           return res;
         }
         case "get": {
           const res = await this.collectionManager.mapManager.get(
             collection,
-            payload.docId
+            payload.docId,
           );
           return res;
         }
@@ -174,42 +176,42 @@ export default class Protocol {
           const res = await this.collectionManager.mapManager.update(
             collection,
             query.docId,
-            update
+            update,
           );
           return res;
         }
         case "delete": {
           const res = await this.collectionManager.mapManager.delete(
             collection,
-            payload.docId
+            payload.docId,
           );
           return res;
         }
         case "createMany": {
           const res = await this.collectionManager.mapManager.setMany(
             collection,
-            payload
+            payload,
           );
           return res;
         }
         case "getMany": {
           const res = await this.collectionManager.mapManager.getMany(
             collection,
-            payload
+            payload,
           );
           return res;
         }
         case "updateMany": {
           const res = await this.collectionManager.mapManager.updateMany(
             collection,
-            payload
+            payload,
           );
           return res;
         }
         case "find": {
           const res = await this.collectionManager.mapManager.find(
             collection,
-            payload
+            payload,
           );
           return res;
         }
@@ -224,7 +226,7 @@ export default class Protocol {
 
   private async sendDataInChunks(
     connection: Deno.Conn,
-    data: Uint8Array
+    data: Uint8Array,
   ): Promise<void> {
     const chunkSize = 64 * 1024; // 64KB chunks
     let offset = 0;
@@ -246,8 +248,9 @@ export default class Protocol {
 
   private async sendResponse(connection: Deno.Conn, response: any) {
     try {
-      const safe =
-        response instanceof Map ? Object.fromEntries(response) : response;
+      const safe = response instanceof Map
+        ? Object.fromEntries(response)
+        : response;
       const encoded = encode(safe) as Uint8Array;
 
       // Send length prefix

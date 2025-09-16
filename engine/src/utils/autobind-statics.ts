@@ -3,11 +3,11 @@ type StaticMethodNames<T> = {
 }[keyof T];
 
 export function autobindStatics<T extends { new (...args: any[]): any }>(
-  cls: T
+  cls: T,
 ): Pick<typeof cls, StaticMethodNames<typeof cls>> {
   const bound: any = {};
   const methodNames = Object.getOwnPropertyNames(cls).filter(
-    (key) => typeof (cls as any)[key] === "function"
+    (key) => typeof (cls as any)[key] === "function",
   );
 
   for (const name of methodNames) {

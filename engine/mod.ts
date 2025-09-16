@@ -7,4 +7,4 @@ import {
 const catalog: ReturnType<typeof getCatalog> = getCatalog();
 const store: ReturnType<typeof getMapManager> = getMapManager();
 
-export { setup, catalog, store };
+export { catalog, setup, store };

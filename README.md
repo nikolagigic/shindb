@@ -1,17 +1,22 @@
 # ShinDB
 
-**ShinDB** is a JavaScript/TypeScript-native, RAM-first database with append-only persistence.  
-It’s built for developers who want **blazing-fast CRUD**, dead-simple DX, and minimal infra setup — without spinning up Postgres/Mongo/Redis clusters just to prototype or ship.
+**ShinDB** is a JavaScript/TypeScript-native, RAM-first database with
+append-only persistence.\
+It’s built for developers who want **blazing-fast CRUD**, dead-simple DX, and
+minimal infra setup — without spinning up Postgres/Mongo/Redis clusters just to
+prototype or ship.
 
 ---
 
 ## Features
 
-- ⚡ **Ultra-fast in-memory storage** (benchmarked at ~1M ops/sec single-threaded).
+- ⚡ **Ultra-fast in-memory storage** (benchmarked at ~1M ops/sec
+  single-threaded).
 - 📝 **Append-only persistence (AOF)** with buffered writes.
 - 🔒 **TypeScript-first API** for safe data access.
 - 🛠️ **DX-friendly**: no SQL, no drivers, no infra boilerplate.
-- 🗃️ **Shardable Map manager** that bypasses V8’s per-Map entry cap (~8.3M) and scales to **~30M records per process**.
+- 🗃️ **Shardable Map manager** that bypasses V8’s per-Map entry cap (~8.3M) and
+  scales to **~30M records per process**.
 - 📉 **Memory-efficient**: ~140 bytes per record at scale.
 - 🚀 Works anywhere Deno or Node.js can run.
 
@@ -84,20 +89,22 @@ ShinDB pushes V8 to its absolute limits:
 - Heavy storage workloads where datasets >> RAM.
 - General replacements for Postgres/Mongo.
 
-ShinDB is not a general-purpose SQL DB — it’s a **RAM-first engine** that shines where **speed, simplicity, and developer experience** matter most.
+ShinDB is not a general-purpose SQL DB — it’s a **RAM-first engine** that shines
+where **speed, simplicity, and developer experience** matter most.
 
 ---
 
 ## Vision
 
-ShinDB isn’t here to dethrone Postgres or MongoDB.  
+ShinDB isn’t here to dethrone Postgres or MongoDB.\
 It’s here to be the **Redis-class database for the JS/TS world**:
 
 - Ultra-fast.
 - Zero-setup.
 - DX-driven.
 
-Long-term, the goal is a hosted **ShinDB Cloud** so developers can spin up an in-memory DB in seconds — cheap, fast, and easy.
+Long-term, the goal is a hosted **ShinDB Cloud** so developers can spin up an
+in-memory DB in seconds — cheap, fast, and easy.
 
 ---
 

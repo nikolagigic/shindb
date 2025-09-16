@@ -1,46 +1,45 @@
-import MapManager from '../../controllers/map-manager.ts';
-import { InMemoryCollectionsCatalog } from '../../services/collections-catalog.ts';
-
-import { autobindStatics } from '../utils/autobind-statics.ts';
+import type MapManager from "@/controllers/map-manager.ts";
+import type { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
+import type {
+  Table,
+  TableToType,
+  TableToUpdateType,
+  TableToUpdateWithIdType,
+} from "@/types/collection-manager.ts";
+import Logger from "@/utils/logger.ts";
+import { Status } from "@/types/operations.ts";
+import type { DocId } from "@/services/data-store.ts";
+import type { FindQuery } from "@/types/collection-manager.ts";
 
 export class Client {
-  private static connection: Deno.TcpConn | null = null;
-
   constructor(
     private readonly catalog: InMemoryCollectionsCatalog,
-    private readonly mapManager: MapManager<any>
+    private readonly mapManager: MapManager<any>,
   ) {}
 
-  private static async send<T extends Table, A extends keyof ActionResponse<T>>(
-    collection: string,
-    action: A,
-    payload: ActionPayload<T, A>
-  ) {}
+  public collection<T extends Table>(name: string, _table: T) {
+    const c = this.catalog.set(name, _table);
 
-  static collection<T extends Table>(name: string, _table: T) {
-    if (!this.connection) throw new Error('Call setup() first');
+    if (c.status === Status.OK) {
+      Logger.success(`${name.toUpperCase()} collection created `);
+    }
 
     return {
-      create: (doc: InferRow<T>) => this.send<T, 'create'>(name, 'create', doc),
-      get: (query: { docId: DocId }) => this.send<T, 'get'>(name, 'get', query),
-      update: (query: { docId: DocId }, update: Partial<InferRow<T>>) =>
-        this.send<T, 'update'>(name, 'update', { query, update }),
-      delete: (query: { docId: DocId }) =>
-        this.send<T, 'delete'>(name, 'delete', query),
+      create: async (data: TableToType<T>) =>
+        await this.mapManager.set(name, data),
+      get: (id: DocId) => this.mapManager.get(name, id),
+      update: (id: DocId, doc: TableToUpdateType<T>) =>
+        this.mapManager.update(name, id, doc),
+      delete: (id: DocId) => this.mapManager.delete(name, id),
 
-      createMany: (docs: InferRow<T>[]) =>
-        this.send<T, 'createMany'>(name, 'createMany', docs),
-      getMany: (ids: DocId[]) => this.send<T, 'getMany'>(name, 'getMany', ids),
-      updateMany: (
-        query: Partial<RowWithId<T>>,
-        update: Partial<InferRow<T>>
-      ) => this.send<T, 'updateMany'>(name, 'updateMany', { query, update }),
-      deleteMany: (query: Partial<RowWithId<T>>) =>
-        this.send<T, 'deleteMany'>(name, 'deleteMany', query),
+      createMany: async (docs: TableToType<T>[]) =>
+        await this.mapManager.setMany(name, docs),
+      getMany: (ids: DocId[]) => this.mapManager.getMany(name, ids),
+      updateMany: (data: TableToUpdateWithIdType<T>[]) =>
+        this.mapManager.updateMany(name, data),
+      deleteMany: (ids: DocId[]) => this.mapManager.deleteMany(name, ids),
 
-      find: (where: WhereQuery<T>) => this.send<T, 'find'>(name, 'find', where),
+      find: (where: FindQuery<T>) => this.mapManager.find<T>(name, where),
     };
   }
 }
-
-export const { collection } = autobindStatics(Client);

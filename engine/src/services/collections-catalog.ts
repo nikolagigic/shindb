@@ -1,5 +1,5 @@
-import { Table } from '@/types/collection-manager.ts';
-import { type Response, Status } from '@/types/operations.ts';
+import { Table } from "@/types/collection-manager.ts";
+import { type Response, Status } from "@/types/operations.ts";
 
 export interface CollectionsCatalog {
   getAll(): Response<ReadonlyMap<string, Table>>;
@@ -34,7 +34,7 @@ export class InMemoryCollectionsCatalog implements CollectionsCatalog {
   private setUniqueFields(name: string, table: Table) {
     Object.keys(table).map((k) => {
       const collection = this.ensureCollectionUniqueMap(name);
-      collection.set(k, table[k].modifiers?.includes('unique'));
+      collection.set(k, table[k].modifiers?.includes("unique"));
     });
   }
 
@@ -60,6 +60,12 @@ export class InMemoryCollectionsCatalog implements CollectionsCatalog {
   }
 
   set(name: string, table: Table): Response {
+    if (this.collections.get(name)) {
+      return {
+        status: Status.ERROR,
+      };
+    }
+
     this.collections.set(name, table);
 
     this.setUniqueFields(name, table);

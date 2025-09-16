@@ -152,7 +152,7 @@ async function runMixed() {
   console.log(
     `mix: R=${(MIX.read * 100) | 0}% W=${(MIX.write * 100) | 0}% U=${
       (MIX.update * 100) | 0
-    }% D=${(MIX.del * 100) | 0}%`
+    }% D=${(MIX.del * 100) | 0}%`,
   );
 
   console.log(`Prefill ${PREFILL.toLocaleString()} docs...`);
@@ -163,14 +163,18 @@ async function runMixed() {
   const afterPrefill = memSnap();
   console.log("\n=== Post-prefill Memory ===");
   console.log(
-    `RSS after inserting ${PREFILL.toLocaleString()} docs: ${fmtMB(
-      afterPrefill.rss
-    )}`
+    `RSS after inserting ${PREFILL.toLocaleString()} docs: ${
+      fmtMB(
+        afterPrefill.rss,
+      )
+    }`,
   );
   console.log(
-    `Per-doc cost: ${(afterPrefill.rss / PREFILL).toFixed(
-      2
-    )} bytes/doc (approx)`
+    `Per-doc cost: ${
+      (afterPrefill.rss / PREFILL).toFixed(
+        2,
+      )
+    } bytes/doc (approx)`,
   );
 
   let pool = harvestIds();
@@ -241,7 +245,7 @@ async function runMixed() {
 
   const delta = mem1.rss - mem0.rss;
   console.log(
-    `RSS: ${fmtMB(mem0.rss)} -> ${fmtMB(mem1.rss)} (Δ ${fmtMB(delta)})`
+    `RSS: ${fmtMB(mem0.rss)} -> ${fmtMB(mem1.rss)} (Δ ${fmtMB(delta)})`,
   );
 }
 
@@ -357,8 +361,8 @@ console.log("\n=== Summary Comparison ===");
 console.log("Mixed workload shows per-op latencies (read/write/update/del).");
 console.log(
   "Batch ops show total time to process an entire PREFILL set " +
-    `(=${PREFILL.toLocaleString()} docs).`
+    `(=${PREFILL.toLocaleString()} docs).`,
 );
 console.log(
-  "This highlights the overhead saved when using batch instead of single ops."
+  "This highlights the overhead saved when using batch instead of single ops.",
 );
