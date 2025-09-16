@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import type MapManager from "@/controllers/map-manager.ts";
 import type { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
 import type {
@@ -14,7 +15,7 @@ import type { FindQuery } from "@/types/collection-manager.ts";
 export class Client {
   constructor(
     private readonly catalog: InMemoryCollectionsCatalog,
-    private readonly mapManager: MapManager<any>,
+    private readonly mapManager: MapManager<any>
   ) {}
 
   public collection<T extends Table>(name: string, _table: T) {

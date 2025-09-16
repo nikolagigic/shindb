@@ -1,14 +1,13 @@
 // deno-lint-ignore-file no-explicit-any
 import {
-  CollectionName,
-  DataStore,
-  DocId,
+  type CollectionName,
+  type DataStore,
+  type DocId,
   InMemoryDataStore,
 } from "@/services/data-store.ts";
-import { Response, Status } from "@/types/operations.ts";
-import { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
+import { type Response, Status } from "@/types/operations.ts";
+import type { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
 import Archive from "@/services/archive.ts";
-import Logger from "../utils/logger.ts";
 import type {
   Condition,
   QueryOperatorsWithNot,
@@ -65,7 +64,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
         this.currentMapIndex++;
         const map = new InMemoryDataStore<V>(
           this.catalog,
-          Archive.getInstance(),
+          Archive.getInstance()
         );
 
         this.catalog
@@ -111,7 +110,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   update(
     name: CollectionName,
     docId: DocId,
-    doc: V,
+    doc: V
   ): Response<{ id: DocId; doc: V }> {
     const res = this.findIdInMap(name, docId);
     if (!res) return { status: Status.ERROR };
@@ -139,7 +138,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   getMany(
     name: CollectionName,
-    docIds: DocId[],
+    docIds: DocId[]
   ): Response<{ id: DocId; doc: V }[]> {
     const results: { id: DocId; doc: V }[] = [];
 
@@ -155,7 +154,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   async setMany(
     name: CollectionName,
-    docs: V[],
+    docs: V[]
   ): Promise<Response<{ ids: DocId[] }>> {
     const currentMap = await this.getCurrentMap();
 
@@ -165,7 +164,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   updateMany(
     name: CollectionName,
-    updates: { id: DocId; doc: V }[],
+    updates: { id: DocId; doc: V }[]
   ): Response<{ updated: { id: DocId; doc: V }[] }> {
     for (const { id, doc } of updates) {
       const res = this.update(name, id, doc);
@@ -176,7 +175,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   replaceMany(
     name: CollectionName,
-    updates: { id: DocId; doc: V }[],
+    updates: { id: DocId; doc: V }[]
   ): Response<{ replaced: { id: DocId; doc: V }[] }> {
     const replaced: { id: DocId; doc: V }[] = [];
 
@@ -195,7 +194,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   deleteMany(
     name: CollectionName,
-    docIds: DocId[],
+    docIds: DocId[]
   ): Response<{ deleted: DocId[] }> {
     const deleted: DocId[] = [];
 
@@ -215,7 +214,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   find<T extends Table>(
     name: CollectionName,
-    where: WhereQuery<T>,
+    where: WhereQuery<T>
   ): Response<{ id: DocId; doc: V }[]> {
     const results: { id: DocId; doc: V }[] = [];
 
@@ -235,7 +234,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   private matchesWhere<T extends Table>(
     doc: any,
-    where: WhereQuery<T> | Condition<T>,
+    where: WhereQuery<T> | Condition<T>
   ): boolean {
     if ("field" in where) {
       const value = doc[where.field];

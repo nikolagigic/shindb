@@ -1,5 +1,4 @@
 import CollectionManager from "@/controllers/collection-manager.ts";
-import type { FindQuery } from "@/types/collection-manager.ts";
 import Logger from "@/utils/logger.ts";
 
 if (import.meta.main) {
@@ -39,12 +38,13 @@ if (import.meta.main) {
   let users = usersModel.getMany(ids);
   Logger.success("[CREATE MANY]", users);
 
-  const toUpdateUsers = users.data?.map((user) => ({
-    id: user.id,
-    doc: {
-      username: `user_${user.id}${user.id}`,
-    },
-  })) ?? [];
+  const toUpdateUsers =
+    users.data?.map((user) => ({
+      id: user.id,
+      doc: {
+        username: `user_${user.id}${user.id}`,
+      },
+    })) ?? [];
 
   usersModel.updateMany(toUpdateUsers);
   users = usersModel.getMany(ids);
@@ -54,7 +54,7 @@ if (import.meta.main) {
   users = usersModel.getMany(ids);
   Logger.success("[DELETE MANY]", users);
 
-  const createdUsersWhereQuery = await usersModel.createMany([
+  await usersModel.createMany([
     {
       username: "user_1",
     },

@@ -1,4 +1,4 @@
-import { Table } from "@/types/collection-manager.ts";
+import type { Table } from "@/types/collection-manager.ts";
 import { type Response, Status } from "@/types/operations.ts";
 
 export interface CollectionsCatalog {
