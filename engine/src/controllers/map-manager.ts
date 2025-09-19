@@ -4,16 +4,18 @@ import {
   type DataStore,
   type DocId,
   InMemoryDataStore,
-} from "@/services/data-store.ts";
-import { type Response, Status } from "@/types/operations.ts";
-import type { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
-import Archive from "@/services/archive.ts";
+} from '@/services/data-store.ts';
+import { type Response, Status } from '@/types/operations.ts';
+import type { InMemoryCollectionsCatalog } from '@/services/collections-catalog.ts';
+import Archive from '@/services/archive.ts';
 import type {
   Condition,
   QueryOperatorsWithNot,
   Table,
   WhereQuery,
-} from "@/types/collection-manager.ts";
+} from '@/types/collection-manager.ts';
+import Logger from '../utils/logger.ts';
+import { MemoryManager, type MemoryConfig } from '@/services/memory-manager.ts';
 
 const MAX_ALLOCATED_ENTRIES = 6_000_000;
 
@@ -45,14 +47,122 @@ interface MapState<V extends Uint8Array> {
 export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   private maps: Map<number, MapState<V>> = new Map();
   private currentMapIndex = 0;
+  public readonly memoryManager: MemoryManager;
+  private activeTransactions: Set<string> = new Set();
+  private emergencyBrakeCount = 0;
+  private lastEvictionTime = 0;
 
   private readonly mapMutex = new Mutex();
 
-  constructor(readonly catalog: InMemoryCollectionsCatalog) {
+  constructor(
+    readonly catalog: InMemoryCollectionsCatalog,
+    memoryConfig?: MemoryConfig
+  ) {
     this.maps.set(this.currentMapIndex, {
       map: new InMemoryDataStore(catalog, Archive.getInstance()),
       size: 0,
     });
+
+    this.memoryManager = new MemoryManager(memoryConfig);
+    this.setupMemoryCallbacks();
+  }
+
+  private setupMemoryCallbacks(): void {
+    // Setup eviction callback
+    this.memoryManager.onEviction(() => {
+      this.performLRUEviction();
+    });
+
+    // Setup emergency callback to cancel active transactions
+    this.memoryManager.onEmergency(() => {
+      this.cancelActiveTransactions();
+    });
+  }
+
+  private performLRUEviction(): void {
+    const now = Date.now();
+
+    // Emergency brake: prevent infinite eviction loops
+    if (now - this.lastEvictionTime < 1000) {
+      // Less than 1 second since last eviction
+      this.emergencyBrakeCount++;
+      if (this.emergencyBrakeCount > 3) {
+        // Reduced from 5 to 3 for faster response
+        Logger.error(
+          '[MapManager] Emergency brake activated - stopping eviction attempts'
+        );
+        this.memoryManager.stopMonitoring();
+        return;
+      }
+    } else {
+      this.emergencyBrakeCount = 0; // Reset counter if enough time has passed
+    }
+
+    this.lastEvictionTime = now;
+
+    const stats = this.memoryManager.getMemoryStats();
+    const targetBytes = Math.floor(stats.rss * 0.2); // Evict 20% of current RSS
+
+    const keysToEvict = this.memoryManager.getLRUKeysToEvict(targetBytes);
+
+    Logger.warning(
+      `[MapManager] Performing LRU eviction of ${keysToEvict.length} keys`
+    );
+
+    if (keysToEvict.length === 0) {
+      Logger.warning(
+        '[MapManager] No LRU keys available for eviction - memory may be from external sources'
+      );
+
+      // If we have no LRU keys and memory is still over limit, stop monitoring
+      if (stats.isOverLimit) {
+        Logger.error(
+          '[MapManager] No LRU keys available and memory still over limit - stopping monitoring'
+        );
+        this.memoryManager.stopMonitoring();
+        return;
+      }
+
+      // Force garbage collection as last resort
+      if (typeof (globalThis as any).gc === 'function') {
+        (globalThis as any).gc();
+        Logger.info('[MapManager] Forced garbage collection');
+      }
+      return;
+    }
+
+    let evictedCount = 0;
+    for (const key of keysToEvict) {
+      const [collectionName, docId] = this.parseLRUKey(key);
+      if (collectionName && docId !== null) {
+        const deleteResult = this.delete(collectionName, docId);
+        if (deleteResult.status === Status.OK) {
+          this.memoryManager.removeFromLRU(key);
+          evictedCount++;
+        }
+      }
+    }
+
+    Logger.info(`[MapManager] Successfully evicted ${evictedCount} items`);
+  }
+
+  private cancelActiveTransactions(): void {
+    Logger.error(
+      `[MapManager] Cancelling ${this.activeTransactions.size} active transactions due to memory limit`
+    );
+    this.activeTransactions.clear();
+  }
+
+  private parseLRUKey(key: string): [string | null, number | null] {
+    const parts = key.split(':');
+    if (parts.length !== 2) return [null, null];
+
+    const docId = parseInt(parts[1], 10);
+    return [parts[0], isNaN(docId) ? null : docId];
+  }
+
+  private createLRUKey(collectionName: string, docId: number): string {
+    return `${collectionName}:${docId}`;
   }
 
   private getCurrentMap(): Promise<MapState<V>> {
@@ -97,14 +207,32 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     const res = this.findIdInMap(name, docId);
     if (!res) return { status: Status.ERROR };
 
-    return res.map.get(name, docId);
+    const result = res.map.get(name, docId);
+
+    // Track access for LRU
+    if (result.status === Status.OK && result.data) {
+      const lruKey = this.createLRUKey(name, docId);
+      const size = this.memoryManager.estimateDataSize(result.data.doc);
+      this.memoryManager.trackAccess(lruKey, size);
+    }
+
+    return result;
   }
 
   async set(name: CollectionName, doc: V): Promise<Response<{ id: DocId }>> {
     const currentMap = await this.getCurrentMap();
 
     currentMap.size++;
-    return currentMap.map.set(name, doc);
+    const result = await currentMap.map.set(name, doc);
+
+    // Track for LRU if successful
+    if (result.status === Status.OK && result.data) {
+      const lruKey = this.createLRUKey(name, result.data.id);
+      const size = this.memoryManager.estimateDataSize(doc);
+      this.memoryManager.trackAccess(lruKey, size);
+    }
+
+    return result;
   }
 
   update(
@@ -123,7 +251,15 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     if (!res) return { status: Status.ERROR };
 
     res.size--;
-    return res.map.delete(name, docId);
+    const result = res.map.delete(name, docId);
+
+    // Remove from LRU cache if successful
+    if (result.status === Status.OK) {
+      const lruKey = this.createLRUKey(name, docId);
+      this.memoryManager.removeFromLRU(lruKey);
+    }
+
+    return result;
   }
 
   size(): number {
@@ -156,10 +292,58 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     name: CollectionName,
     docs: V[]
   ): Promise<Response<{ ids: DocId[] }>> {
-    const currentMap = await this.getCurrentMap();
+    const transactionId = `setMany_${name}_${Date.now()}_${Math.random()}`;
 
-    currentMap.size += docs.length;
-    return currentMap.map.setMany(name, docs);
+    try {
+      // Add to active transactions
+      this.activeTransactions.add(transactionId);
+
+      // Estimate memory usage more accurately
+      const estimatedSize =
+        docs.reduce((total, doc) => {
+          return total + this.memoryManager.estimateDataSize(doc);
+        }, 0) +
+        docs.length * 64 + // Additional overhead per document
+        Math.min(docs.length * 100, 1024 * 1024); // Capped linear overhead for large batches
+
+      // Check if we can allocate this much memory
+      if (!this.memoryManager.canAllocate(estimatedSize)) {
+        Logger.warning(
+          `[MapManager] setMany rejected: would exceed memory limits. Estimated size: ${estimatedSize} bytes`
+        );
+        // Stop monitoring temporarily to prevent infinite loops
+        this.memoryManager.stopMonitoring();
+        return { status: Status.ERROR };
+      }
+
+      // Check current memory usage
+      const stats = this.memoryManager.getMemoryStats();
+      if (stats.isOverLimit) {
+        Logger.warning(
+          `[MapManager] setMany rejected: memory limit already exceeded`
+        );
+        return { status: Status.ERROR };
+      }
+
+      const currentMap = await this.getCurrentMap();
+      currentMap.size += docs.length;
+
+      const result = await currentMap.map.setMany(name, docs);
+
+      // Track for LRU if successful
+      if (result.status === Status.OK && result.data) {
+        for (let i = 0; i < result.data.ids.length; i++) {
+          const lruKey = this.createLRUKey(name, result.data.ids[i]);
+          const size = this.memoryManager.estimateDataSize(docs[i]);
+          this.memoryManager.trackAccess(lruKey, size);
+        }
+      }
+
+      return result;
+    } finally {
+      // Remove from active transactions
+      this.activeTransactions.delete(transactionId);
+    }
   }
 
   updateMany(
@@ -236,14 +420,14 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     doc: any,
     where: WhereQuery<T> | Condition<T>
   ): boolean {
-    if ("field" in where) {
+    if ('field' in where) {
       const value = doc[where.field];
       return this.evaluateOperators(value, where.op);
     }
-    if ("AND" in where) {
+    if ('AND' in where) {
       return where.AND.every((sub) => this.matchesWhere(doc, sub));
     }
-    if ("OR" in where) {
+    if ('OR' in where) {
       return where.OR.some((sub) => this.matchesWhere(doc, sub));
     }
     return true;
@@ -263,7 +447,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     if (ops.contains) {
       if (Array.isArray(value)) {
         ok &&= value.includes(ops.contains);
-      } else if (typeof value === "string") {
+      } else if (typeof value === 'string') {
         ok &&= value.includes(String(ops.contains));
       } else {
         ok = false;
@@ -283,5 +467,48 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     }
 
     return ok;
+  }
+
+  // Memory management methods
+  startMemoryMonitoring(): void {
+    this.memoryManager.startMonitoring();
+  }
+
+  stopMemoryMonitoring(): void {
+    this.memoryManager.stopMonitoring();
+  }
+
+  getMemoryStats() {
+    return this.memoryManager.getMemoryStats();
+  }
+
+  updateMemoryConfig(config: Partial<MemoryConfig>): void {
+    this.memoryManager.updateConfig(config);
+  }
+
+  getLRUStats() {
+    return this.memoryManager.getLRUStats();
+  }
+
+  // Reset emergency brake (useful for testing or recovery)
+  resetEmergencyBrake(): void {
+    this.emergencyBrakeCount = 0;
+    this.lastEvictionTime = 0;
+    Logger.info('[MapManager] Emergency brake reset');
+  }
+
+  // Get current emergency brake status
+  getEmergencyBrakeStatus(): { count: number; lastEviction: number } {
+    return {
+      count: this.emergencyBrakeCount,
+      lastEviction: this.lastEvictionTime,
+    };
+  }
+
+  // Restart monitoring after a rejection (useful for recovery)
+  restartMemoryMonitoring(): void {
+    this.memoryManager.startMonitoring();
+    this.resetEmergencyBrake();
+    Logger.info('[MapManager] Memory monitoring restarted');
   }
 }
