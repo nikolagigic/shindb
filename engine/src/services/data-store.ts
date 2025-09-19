@@ -168,19 +168,19 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     const st = this.ensureState(name);
 
     const ids: DocId[] = new Array(docs.length);
+    const docsLength = docs.length;
 
-    let i = 0;
-    for (const doc of docs) {
+    // Pre-allocate and use traditional for loop for better performance
+    for (let i = 0; i < docsLength; i++) {
       const id = this.nextId(st);
-      st.map.set(id, doc);
-      ids[i++] = id;
+      st.map.set(id, docs[i]);
+      ids[i] = id;
     }
 
-    st.size += docs.length;
+    st.size += docsLength;
 
-    for (const doc of docs) {
-      this.archive.addRecord(doc);
-    }
+    // Batch archive all documents at once instead of individual calls
+    this.archive.addRecords(docs);
 
     return { status: Status.OK, data: { ids } };
   }

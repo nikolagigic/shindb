@@ -287,7 +287,8 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
   async setMany(
     name: CollectionName,
-    docs: V[]
+    docs: V[],
+    isChunked: boolean = false
   ): Promise<Response<{ ids: DocId[] }>> {
     const transactionId = `setMany_${name}_${Date.now()}_${Math.random()}`;
 
@@ -295,18 +296,44 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
       // Add to active transactions
       this.activeTransactions.add(transactionId);
 
-      // Estimate memory usage more accurately
+      // Optimize memory estimation for large batches
+      const docsLength = docs.length;
+
+      // Use bulk estimation for better performance
       const estimatedSize =
-        docs.reduce((total, doc) => {
-          return total + this.memoryManager.estimateDataSize(doc);
-        }, 0) +
-        docs.length * 64 + // Additional overhead per document
-        Math.min(docs.length * 100, 1024 * 1024); // Capped linear overhead for large batches
+        this.memoryManager.estimateDataSizeBulk(docs) +
+        docsLength * 32 + // Reduced overhead per document (more accurate)
+        Math.min(docsLength * 50, 512 * 1024); // Reduced linear overhead for large batches
 
       // Check if we can allocate this much memory
       if (!this.memoryManager.canAllocate(estimatedSize)) {
+        // Try chunked processing for large datasets (only if not already chunked)
+        if (docsLength > 10000 && !isChunked) {
+          // Only chunk for reasonably large datasets
+          Logger.info(
+            `[MapManager] Large dataset detected (${docsLength} docs), using chunked processing`
+          );
+          return await this.setManyChunked(name, docs);
+        }
+
+        const stats = this.memoryManager.getMemoryStats();
+        const projectedRSS = stats.rss + estimatedSize;
+
         Logger.warning(
-          `[MapManager] setMany rejected: would exceed memory limits. Estimated size: ${estimatedSize} bytes`
+          `[MapManager] setMany rejected: would exceed memory limits. ` +
+            `Estimated size: ${(estimatedSize / 1024 / 1024 / 1024).toFixed(
+              2
+            )}GB, ` +
+            `Current RSS: ${(stats.rss / 1024 / 1024 / 1024).toFixed(2)}GB, ` +
+            `Projected RSS: ${(projectedRSS / 1024 / 1024 / 1024).toFixed(
+              2
+            )}GB, ` +
+            `Limit: ${(
+              this.memoryManager.getConfig().maxRSSBytes /
+              1024 /
+              1024 /
+              1024
+            ).toFixed(2)}GB`
         );
         // Stop monitoring temporarily to prevent infinite loops
         this.memoryManager.stopMonitoring();
@@ -327,13 +354,21 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
       const result = await currentMap.map.setMany(name, docs);
 
-      // Track for LRU if successful
+      // Track for LRU if successful - use bulk tracking for better performance
       if (result.status === Status.OK && result.data) {
-        for (let i = 0; i < result.data.ids.length; i++) {
-          const lruKey = this.createLRUKey(name, result.data.ids[i]);
-          const size = this.memoryManager.estimateDataSize(docs[i]);
-          this.memoryManager.trackAccess(lruKey, size);
+        const idsLength = result.data.ids.length;
+        const lruEntries: Array<{ key: string; size: number }> = new Array(
+          idsLength
+        );
+
+        for (let i = 0; i < idsLength; i++) {
+          lruEntries[i] = {
+            key: this.createLRUKey(name, result.data.ids[i]),
+            size: this.memoryManager.estimateDataSize(docs[i]),
+          };
         }
+
+        this.memoryManager.trackAccessBulk(lruEntries);
       }
 
       return result;
@@ -341,6 +376,84 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
       // Remove from active transactions
       this.activeTransactions.delete(transactionId);
     }
+  }
+
+  private async setManyChunked(
+    name: CollectionName,
+    docs: V[]
+  ): Promise<Response<{ ids: DocId[] }>> {
+    const docsLength = docs.length;
+    const stats = this.memoryManager.getMemoryStats();
+    const availableMemory =
+      this.memoryManager.getConfig().maxRSSBytes - stats.rss;
+
+    // Calculate optimal chunk size based on available memory
+    // Use 80% of available memory for better performance
+    const sampleDoc = docs[0];
+    const sampleSize = this.memoryManager.estimateDataSize(sampleDoc);
+    const safeAvailableMemory = Math.max(availableMemory, 200 * 1024 * 1024); // At least 200MB
+    const maxChunkSize = Math.floor((safeAvailableMemory * 0.8) / sampleSize);
+    const chunkSize = Math.max(Math.min(maxChunkSize, 50000), 1000); // Cap at 50k docs, min 1k docs per chunk
+
+    // If chunk size is still too small, use a fixed small chunk size
+    let finalChunkSize = chunkSize < 1000 ? 1000 : chunkSize;
+
+    // If memory is critically low, use even smaller chunks
+    if (availableMemory < 100 * 1024 * 1024) {
+      // Less than 100MB available
+      finalChunkSize = Math.min(finalChunkSize, 5000); // Max 5k docs per chunk
+      Logger.warning(
+        `[MapManager] Low memory detected, using smaller chunks of ${finalChunkSize}`
+      );
+    }
+
+    Logger.info(
+      `[MapManager] Processing ${docsLength} docs in chunks of ${finalChunkSize} ` +
+        `(available memory: ${(availableMemory / 1024 / 1024 / 1024).toFixed(
+          2
+        )}GB)`
+    );
+
+    const allIds: DocId[] = [];
+    let processed = 0;
+
+    for (let i = 0; i < docsLength; i += finalChunkSize) {
+      const chunk = docs.slice(i, i + finalChunkSize);
+      const chunkResult = await this.setMany(name, chunk, true); // Mark as chunked to prevent recursion
+
+      if (chunkResult.status !== Status.OK || !chunkResult.data) {
+        Logger.error(
+          `[MapManager] Chunk processing failed at ${i}/${docsLength}`
+        );
+        return { status: Status.ERROR };
+      }
+
+      allIds.push(...chunkResult.data.ids);
+      processed += chunk.length;
+
+      // Force garbage collection every 500 chunks to free memory (less frequent for better performance)
+      if (processed % (finalChunkSize * 500) === 0) {
+        if (typeof (globalThis as any).gc === 'function') {
+          (globalThis as any).gc();
+        }
+      }
+
+      // Log progress every 10% or every 100k docs
+      if (processed % Math.max(Math.floor(docsLength / 10), 100000) === 0) {
+        const currentStats = this.memoryManager.getMemoryStats();
+        Logger.info(
+          `[MapManager] Progress: ${processed}/${docsLength} docs processed ` +
+            `(${((processed / docsLength) * 100).toFixed(1)}%) ` +
+            `Memory: ${(currentStats.rss / 1024 / 1024 / 1024).toFixed(2)}GB`
+        );
+      }
+    }
+
+    Logger.success(
+      `[MapManager] Successfully processed ${docsLength} docs in chunks`
+    );
+
+    return { status: Status.OK, data: { ids: allIds } };
   }
 
   updateMany(

@@ -1,4 +1,4 @@
-import Logger from "../utils/logger.ts";
+import Logger from '../utils/logger.ts';
 
 export default class Archive {
   static instance: Archive;
@@ -13,7 +13,7 @@ export default class Archive {
     //   create: true,
     // });
 
-    Logger.success("Archive set-up");
+    Logger.success('Archive set-up');
   }
 
   static getInstance() {
@@ -27,6 +27,17 @@ export default class Archive {
   public addRecord(content: Uint8Array) {
     this.buf.push(content);
     this.bufSize += content.length;
+    if (this.bufSize >= this.FLUSH_BYTES) {
+      this.flush();
+    }
+  }
+
+  public addRecords(contents: Uint8Array[]) {
+    // Batch add multiple records at once for better performance
+    for (const content of contents) {
+      this.buf.push(content);
+      this.bufSize += content.length;
+    }
     if (this.bufSize >= this.FLUSH_BYTES) {
       this.flush();
     }

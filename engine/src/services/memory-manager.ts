@@ -138,9 +138,12 @@ export class MemoryManager {
     const projectedRSS = stats.rss + estimatedBytes;
     const projectedHeap = stats.heapUsed + estimatedBytes;
 
+    // Dynamic safety margin: smaller for large datasets where estimation is more accurate
+    const safetyMargin = estimatedBytes > 1024 * 1024 * 1024 ? 1.01 : 1.02; // 1% for >1GB, 2% for smaller
+
     return (
-      projectedRSS <= this.config.maxRSSBytes &&
-      projectedHeap <= this.config.maxHeapBytes
+      projectedRSS * safetyMargin <= this.config.maxRSSBytes &&
+      projectedHeap * safetyMargin <= this.config.maxHeapBytes
     );
   }
 
@@ -170,9 +173,19 @@ export class MemoryManager {
     }
 
     if (data && typeof data === 'object') {
-      // More accurate object size estimation
-      const jsonStr = JSON.stringify(data);
-      return jsonStr.length * 2 + 24; // String + object overhead
+      // Optimized object size estimation without JSON.stringify
+      let size = 24; // Base object overhead
+
+      for (const [key, value] of Object.entries(data)) {
+        // Key size (string length * 2 for UTF-16)
+        size += key.length * 2;
+        // Value size estimation
+        size += this.estimateDataSize(value);
+        // Property overhead
+        size += 16;
+      }
+
+      return size;
     }
 
     return 0;
@@ -199,6 +212,29 @@ export class MemoryManager {
       lastAccessed: Date.now(),
       size,
     });
+  }
+
+  trackAccessBulk(entries: Array<{ key: string; size: number }>): void {
+    // Batch track multiple accesses for better performance
+    const now = Date.now();
+    for (const entry of entries) {
+      this.lruCache.set(entry.key, {
+        lastAccessed: now,
+        size: entry.size,
+      });
+    }
+  }
+
+  estimateDataSizeBulk(dataArray: unknown[]): number {
+    // Optimized bulk estimation for large arrays
+    let totalSize = 0;
+    const dataLength = dataArray.length;
+
+    for (let i = 0; i < dataLength; i++) {
+      totalSize += this.estimateDataSize(dataArray[i]);
+    }
+
+    return totalSize;
   }
 
   removeFromLRU(key: string): void {
