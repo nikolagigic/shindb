@@ -272,16 +272,13 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     return this.maps.size;
   }
 
-  getMany(
-    name: CollectionName,
-    docIds: DocId[]
-  ): Response<{ id: DocId; doc: V }[]> {
-    const results: { id: DocId; doc: V }[] = [];
+  getMany(name: CollectionName, docIds: DocId[]): Response<Map<DocId, V>> {
+    const results = new Map<DocId, V>();
 
     for (const id of docIds) {
       const res = this.get(name, id);
       if (res.status === Status.OK && res.data) {
-        results.push(res.data);
+        results.set(id, res.data.doc);
       }
     }
 

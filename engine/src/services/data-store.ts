@@ -1,6 +1,6 @@
-import { Response, Status } from "@/types/operations.ts";
-import { CollectionsCatalog } from "./collections-catalog.ts";
-import Archive from "./archive.ts";
+import { Response, Status } from '@/types/operations.ts';
+import { CollectionsCatalog } from './collections-catalog.ts';
+import Archive from './archive.ts';
 
 export type CollectionName = string;
 export type DocId = number;
@@ -15,34 +15,35 @@ export interface DataStore<V = unknown> {
   get(name: string, docId: DocId): Response<{ id: DocId; doc: V }>;
   set(
     name: string,
-    doc: V,
+    doc: V
   ): Response<{ id: DocId }> | Promise<Response<{ id: DocId }>>;
   update(name: string, docId: DocId, doc: V): Response<{ id: DocId; doc: V }>;
   delete(name: string, docId: DocId): Response<{ id: DocId }>;
 
-  getMany(name: string, docIds: DocId[]): Response<{ id: DocId; doc: V }[]>;
+  getMany(name: string, docIds: DocId[]): Response<Map<DocId, V>>;
   setMany(
     name: string,
-    docs: V[],
+    docs: V[]
   ): Response<{ ids: DocId[] }> | Promise<Response<{ ids: DocId[] }>>;
   updateMany(
     name: string,
-    updates: { id: DocId; doc: V }[],
+    updates: { id: DocId; doc: V }[]
   ): Response<{ updated: { id: DocId; doc: V }[] }>;
   replaceMany(
     name: string,
-    updates: { id: DocId; doc: V }[],
+    updates: { id: DocId; doc: V }[]
   ): Response<{ replaced: { id: DocId; doc: V }[] }>;
   deleteMany(name: string, docIds: DocId[]): Response<{ deleted: DocId[] }>;
 }
 
 export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
-  implements DataStore<V> {
+  implements DataStore<V>
+{
   private readonly data: Map<CollectionName, CollectionState<V>> = new Map();
 
   constructor(
-    private readonly catalog: Pick<CollectionsCatalog, "exists">,
-    private readonly archive: Archive,
+    private readonly catalog: Pick<CollectionsCatalog, 'exists'>,
+    private readonly archive: Archive
   ) {}
 
   ensure(name: string): boolean {
@@ -51,7 +52,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
 
   public ensureState(
     name: string,
-    options = { nextId: 0, size: 0 },
+    options = { nextId: 0, size: 0 }
   ): CollectionState<V> {
     let st = this.data.get(name);
     if (!st) {
@@ -125,7 +126,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
   update(
     name: string,
     docId: DocId,
-    patch: V,
+    patch: V
   ): Response<{ id: DocId; doc: V }> {
     const st = this.data.get(name);
     if (!st) return { status: Status.ERROR };
@@ -149,14 +150,14 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     return st ? { status: Status.OK, data: st.size } : { status: Status.ERROR };
   }
 
-  getMany(name: string, docIds: DocId[]): Response<{ id: DocId; doc: V }[]> {
+  getMany(name: string, docIds: DocId[]): Response<Map<DocId, V>> {
     if (!this.ensure(name)) return { status: Status.ERROR };
     const st = this.ensureState(name);
 
-    const result: { id: DocId; doc: V }[] = [];
+    const result = new Map<DocId, V>();
     for (const id of docIds) {
       const doc = st.map.get(id);
-      if (doc !== undefined) result.push({ id, doc });
+      if (doc !== undefined) result.set(id, doc);
     }
 
     return { status: Status.OK, data: result };
@@ -186,7 +187,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
 
   updateMany(
     name: string,
-    updates: { id: DocId; doc: V }[],
+    updates: { id: DocId; doc: V }[]
   ): Response<{ updated: { id: DocId; doc: V }[] }> {
     if (!this.ensure(name)) return { status: Status.ERROR };
     const st = this.ensureState(name);
@@ -203,7 +204,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
 
   replaceMany(
     name: string,
-    updates: { id: DocId; doc: V }[],
+    updates: { id: DocId; doc: V }[]
   ): Response<{ replaced: { id: DocId; doc: V }[] }> {
     if (!this.ensure(name)) return { status: Status.ERROR };
     const st = this.ensureState(name);

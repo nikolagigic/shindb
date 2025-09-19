@@ -1,16 +1,16 @@
 // deno-lint-ignore-file no-explicit-any
-import type MapManager from "@/controllers/map-manager.ts";
-import type { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
+import type MapManager from '@/controllers/map-manager.ts';
+import type { InMemoryCollectionsCatalog } from '@/services/collections-catalog.ts';
 import type {
   Table,
   TableToType,
   TableToUpdateType,
   TableToUpdateWithIdType,
-} from "@/types/collection-manager.ts";
-import Logger from "@/utils/logger.ts";
-import { type Response, Status } from "@/types/operations.ts";
-import type { DocId } from "@/services/data-store.ts";
-import type { FindQuery } from "@/types/collection-manager.ts";
+} from '@/types/collection-manager.ts';
+import Logger from '@/utils/logger.ts';
+import { type Response, Status } from '@/types/operations.ts';
+import type { DocId } from '@/services/data-store.ts';
+import type { FindQuery } from '@/types/collection-manager.ts';
 
 type CollectionCrud<T extends Table> = {
   create: (data: TableToType<T>) => Promise<Response<{ id: number }>>;
@@ -22,7 +22,7 @@ type CollectionCrud<T extends Table> = {
 
 type CollectionMany<T extends Table> = {
   createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
-  getMany: (ids: DocId[]) => Response<{ id: number; doc: TableToType<T> }[]>;
+  getMany: (ids: DocId[]) => Response<Map<DocId, TableToType<T>>>;
   updateMany: (data: TableToUpdateWithIdType<T>[]) => void;
   deleteMany: (ids: DocId[]) => void;
 };
