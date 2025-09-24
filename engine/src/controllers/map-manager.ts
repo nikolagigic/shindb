@@ -7,7 +7,6 @@ import {
 } from '@/services/data-store.ts';
 import { type Response, Status } from '@/types/operations.ts';
 import type { InMemoryCollectionsCatalog } from '@/services/collections-catalog.ts';
-import Archive from '@/services/archive.ts';
 import type {
   Condition,
   QueryOperatorsWithNot,
@@ -59,7 +58,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     memoryConfig?: MemoryConfig
   ) {
     this.maps.set(this.currentMapIndex, {
-      map: new InMemoryDataStore(catalog, Archive.getInstance()),
+      map: new InMemoryDataStore(catalog),
       size: 0,
     });
 
@@ -172,10 +171,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
       if (currentMap.size >= MAX_ALLOCATED_ENTRIES) {
         this.currentMapIndex++;
-        const map = new InMemoryDataStore<V>(
-          this.catalog,
-          Archive.getInstance()
-        );
+        const map = new InMemoryDataStore<V>(this.catalog);
 
         this.catalog
           .getAll()

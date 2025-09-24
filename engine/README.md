@@ -42,7 +42,7 @@ Our database engine achieves remarkable performance that rivals and often exceed
 
 - **MapManager**: Handles data storage and retrieval with memory management
 - **MemoryManager**: Intelligent memory monitoring and chunked processing
-- **Archive**: Efficient data persistence and recovery
+- **Archive**: Efficient data persistence and recovery **TBD**
 - **CollectionManager**: High-level database operations
 
 ### **Key Features**

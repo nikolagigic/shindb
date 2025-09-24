@@ -104,6 +104,6 @@ if (import.meta.main) {
     const result = await usersModel.createMany(usersFromArray);
   });
   await profileAsync(`get many ${NUM_OF_USERS}`, async () => {
-    Logger.success(usersModel.getMany(_userIds));
+    usersModel.getMany(_userIds);
   });
 }

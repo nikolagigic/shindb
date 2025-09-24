@@ -1,6 +1,5 @@
 import { Response, Status } from '@/types/operations.ts';
 import { CollectionsCatalog } from './collections-catalog.ts';
-import Archive from './archive.ts';
 
 export type CollectionName = string;
 export type DocId = number;
@@ -41,10 +40,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
 {
   private readonly data: Map<CollectionName, CollectionState<V>> = new Map();
 
-  constructor(
-    private readonly catalog: Pick<CollectionsCatalog, 'exists'>,
-    private readonly archive: Archive
-  ) {}
+  constructor(private readonly catalog: Pick<CollectionsCatalog, 'exists'>) {}
 
   ensure(name: string): boolean {
     return this.catalog.exists(name);
@@ -93,7 +89,6 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     const id = this.nextId(st);
     st.map.set(id, doc);
     st.size++;
-    this.archive.addRecord(doc);
     return { status: Status.OK, data: { id } };
   }
 
@@ -178,9 +173,6 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     }
 
     st.size += docsLength;
-
-    // Batch archive all documents at once instead of individual calls
-    this.archive.addRecords(docs);
 
     return { status: Status.OK, data: { ids } };
   }
