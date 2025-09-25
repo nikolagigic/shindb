@@ -1,0 +1,12 @@
+table = {
+    username: string;
+    age?: number;
+    name?: string
+}
+
+data = {
+    0: {
+        username: "nikola",
+        age: 29,
+    }
+}hello there
