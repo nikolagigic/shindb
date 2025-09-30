@@ -37,12 +37,25 @@ export default class Server {
   }
 
   private async handleRequest(req: Request): Promise<Response> {
-    const res = (await req.json()) as {
+    const { action, collection, payload } = (await req.json()) as {
       action: string;
       collection: string;
       payload: any;
     };
 
-    return new Response(JSON.stringify(res));
+    switch (action) {
+      case "openCollection": {
+        this.databaseManager.openCollection(name, payload);
+
+        return new Response("ok");
+      }
+      case "createMany": {
+        await this.databaseManager.createMany(name, payload);
+
+        return new Response("ok");
+      }
+      default:
+        return new Response("done");
+    }
   }
 }

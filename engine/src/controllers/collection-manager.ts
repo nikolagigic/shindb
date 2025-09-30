@@ -1,7 +1,8 @@
-import { InMemoryCollectionsCatalog } from '@/services/collections-catalog.ts';
-import MapManager from '@/controllers/map-manager.ts';
-import { Client } from '@/sdk/controllers/client.ts';
-import { type MemoryConfig } from '@/services/memory-manager.ts';
+import { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
+import MapManager from "@/controllers/map-manager.ts";
+import { Client } from "@/sdk/controllers/client.ts";
+import type { MemoryConfig } from "@/services/memory-manager.ts";
+import DatabaseManagerAdapter from "../adapters/database-manager.ts";
 
 export default class CollectionManager {
   private static instance: CollectionManager;
@@ -13,7 +14,11 @@ export default class CollectionManager {
 
   constructor(memoryConfig?: MemoryConfig) {
     this.mapManager = new MapManager(this.catalog, memoryConfig);
-    this.sdk = new Client(this.catalog, this.mapManager);
+    this.sdk = new Client(
+      this.catalog,
+      this.mapManager,
+      DatabaseManagerAdapter.setup()
+    );
   }
 
   public static setup(memoryConfig?: MemoryConfig): CollectionManager {

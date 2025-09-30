@@ -4,6 +4,7 @@
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@1",
-    "@std/path": "jsr:@std/path"
+    "@std/path": "jsr:@std/path",
+    "@std/streams": "jsr:@std/streams@^1.0.12"
   }
 }

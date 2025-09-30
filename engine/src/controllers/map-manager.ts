@@ -4,17 +4,17 @@ import {
   type DataStore,
   type DocId,
   InMemoryDataStore,
-} from '@/services/data-store.ts';
-import { type Response, Status } from '@/types/operations.ts';
-import type { InMemoryCollectionsCatalog } from '@/services/collections-catalog.ts';
+} from "@/services/data-store.ts";
+import { type Response, Status } from "@/types/operations.ts";
+import type { InMemoryCollectionsCatalog } from "@/services/collections-catalog.ts";
 import type {
   Condition,
   QueryOperatorsWithNot,
   Table,
   WhereQuery,
-} from '@/types/collection-manager.ts';
-import Logger from '../utils/logger.ts';
-import { MemoryManager, type MemoryConfig } from '@/services/memory-manager.ts';
+} from "@/types/collection-manager.ts";
+import Logger from "../utils/logger.ts";
+import { MemoryManager, type MemoryConfig } from "@/services/memory-manager.ts";
 
 const MAX_ALLOCATED_ENTRIES = 6_000_000;
 
@@ -88,7 +88,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
       if (this.emergencyBrakeCount > 3) {
         // Reduced from 5 to 3 for faster response
         Logger.error(
-          '[MapManager] Emergency brake activated - stopping eviction attempts'
+          "[MapManager] Emergency brake activated - stopping eviction attempts"
         );
         this.memoryManager.stopMonitoring();
         return;
@@ -110,22 +110,22 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
     if (keysToEvict.length === 0) {
       Logger.warning(
-        '[MapManager] No LRU keys available for eviction - memory may be from external sources'
+        "[MapManager] No LRU keys available for eviction - memory may be from external sources"
       );
 
       // If we have no LRU keys and memory is still over limit, stop monitoring
       if (stats.isOverLimit) {
         Logger.error(
-          '[MapManager] No LRU keys available and memory still over limit - stopping monitoring'
+          "[MapManager] No LRU keys available and memory still over limit - stopping monitoring"
         );
         this.memoryManager.stopMonitoring();
         return;
       }
 
       // Force garbage collection as last resort
-      if (typeof (globalThis as any).gc === 'function') {
+      if (typeof (globalThis as any).gc === "function") {
         (globalThis as any).gc();
-        Logger.info('[MapManager] Forced garbage collection');
+        Logger.info("[MapManager] Forced garbage collection");
       }
       return;
     }
@@ -153,7 +153,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   }
 
   private parseLRUKey(key: string): [string | null, number | null] {
-    const parts = key.split(':');
+    const parts = key.split(":");
     if (parts.length !== 2) return [null, null];
 
     const docId = parseInt(parts[1], 10);
@@ -429,7 +429,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
 
       // Force garbage collection every 500 chunks to free memory (less frequent for better performance)
       if (processed % (finalChunkSize * 500) === 0) {
-        if (typeof (globalThis as any).gc === 'function') {
+        if (typeof (globalThis as any).gc === "function") {
           (globalThis as any).gc();
         }
       }
@@ -526,14 +526,14 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     doc: any,
     where: WhereQuery<T> | Condition<T>
   ): boolean {
-    if ('field' in where) {
+    if ("field" in where) {
       const value = doc[where.field];
       return this.evaluateOperators(value, where.op);
     }
-    if ('AND' in where) {
+    if ("AND" in where) {
       return where.AND.every((sub) => this.matchesWhere(doc, sub));
     }
-    if ('OR' in where) {
+    if ("OR" in where) {
       return where.OR.some((sub) => this.matchesWhere(doc, sub));
     }
     return true;
@@ -553,7 +553,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
     if (ops.contains) {
       if (Array.isArray(value)) {
         ok &&= value.includes(ops.contains);
-      } else if (typeof value === 'string') {
+      } else if (typeof value === "string") {
         ok &&= value.includes(String(ops.contains));
       } else {
         ok = false;
@@ -600,7 +600,7 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   resetEmergencyBrake(): void {
     this.emergencyBrakeCount = 0;
     this.lastEvictionTime = 0;
-    Logger.info('[MapManager] Emergency brake reset');
+    Logger.info("[MapManager] Emergency brake reset");
   }
 
   // Get current emergency brake status
@@ -615,6 +615,6 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   restartMemoryMonitoring(): void {
     this.memoryManager.startMonitoring();
     this.resetEmergencyBrake();
-    Logger.info('[MapManager] Memory monitoring restarted');
+    Logger.info("[MapManager] Memory monitoring restarted");
   }
 }
