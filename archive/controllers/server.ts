@@ -37,15 +37,39 @@ export default class Server {
   }
 
   private async handleRequest(req: Request): Promise<Response> {
-    const { action, collection, payload } = (await req.json()) as {
+    const { action, name, payload } = (await req.json()) as {
       action: string;
-      collection: string;
+      name: string;
       payload: any;
     };
 
     switch (action) {
       case "openCollection": {
         this.databaseManager.openCollection(name, payload);
+
+        return new Response("ok");
+      }
+      case "create": {
+        await this.databaseManager.create(name, payload);
+
+        return new Response("ok");
+      }
+      case "get": {
+        const res = await this.databaseManager.get(name, payload.id);
+        if (!res) {
+          return new Response("not found", { status: 404 });
+        }
+        const data = JSON.stringify({ id: res.id, ...res.data });
+
+        return new Response(data);
+      }
+      case "update": {
+        await this.databaseManager.update(name, payload);
+
+        return new Response("ok");
+      }
+      case "delete": {
+        await this.databaseManager.delete(name, payload.id);
 
         return new Response("ok");
       }

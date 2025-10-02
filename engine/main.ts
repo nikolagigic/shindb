@@ -29,24 +29,25 @@ if (import.meta.main) {
     },
   });
 
-  const NUM_OF_USERS = 1_001;
+  const NUM_OF_USERS = 1_000_000;
 
-  const usersFromArray = Array.from({ length: NUM_OF_USERS }, (_, i) => ({
-    username: `user ${i}`,
-    age: i,
-    bio: loremIpsum(256),
-  }));
+  // const usersFromArray = Array.from({ length: NUM_OF_USERS }, (_, i) => ({
+  //   username: `user ${i}`,
+  //   age: i,
+  //   bio: loremIpsum(256),
+  // }));
 
-  const _userIds = usersFromArray.map(
-    (u) => Number(u.username.split(" ").at(1))!
-  );
+  // const _userIds = usersFromArray.map(
+  //   (u) => Number(u.username.split(" ").at(1))!
+  // );
 
-  // for (let index = 0; index < 32; index++) {
-  await profileAsync(`create many ${NUM_OF_USERS}`, async () => {
-    const result = await usersModel.createMany(usersFromArray);
-  });
-  // }
-  await profileAsync(`get many ${NUM_OF_USERS}`, async () => {
-    usersModel.getMany(_userIds);
+  await profileAsync(`CRUD Testing`, async () => {
+    // await usersModel.createMany(usersFromArray);
+    // await usersModel.create({
+    //   username: "user 1",
+    //   age: 1337,
+    //   bio: "user 1 bio",
+    // });
+    Logger.success("[GET]", await usersModel.get(999_999));
   });
 }

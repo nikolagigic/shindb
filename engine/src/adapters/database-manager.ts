@@ -2,6 +2,7 @@
 import type { Table } from "@/types/collection-manager.ts";
 import Logger from "../utils/logger.ts";
 import { backgroundQueue } from "../services/background-queue.ts";
+import { DocId } from "../services/data-store.ts";
 
 type DatabaseManagerAdapterConfig = {
   host?: string;
@@ -30,13 +31,67 @@ export default class DatabaseManagerAdapter {
     return this.instance;
   }
 
+  private buildBody(name: string, action: string, payload: any) {
+    return {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        action,
+        payload,
+      }),
+    };
+  }
+
   public async openCollection(name: string, table: Table) {
-    const res = await fetch(this.url, {
+    await fetch(this.url, {
       method: "POST",
       body: JSON.stringify({ name, action: "openCollection", payload: table }),
     });
 
     return {
+      create: async (payload: any) => {
+        backgroundQueue.add(async () => {
+          try {
+            await fetch(this.url, this.buildBody(name, "create", payload));
+          } catch (err) {
+            Logger.error("Create failed:", err);
+          }
+        });
+      },
+      get: async (id: DocId) => {
+        try {
+          const res = await fetch(
+            this.url,
+            this.buildBody(name, "get", { id })
+          );
+          if (res.status === 404) {
+            return {};
+          }
+
+          return await res.json();
+        } catch (err) {
+          Logger.error("Get failed:", err);
+        }
+      },
+      update: async (id: DocId, payload: any) => {
+        backgroundQueue.add(async () => {
+          try {
+            await fetch(
+              this.url,
+              this.buildBody(name, "update", { id, ...payload })
+            );
+          } catch (err) {
+            Logger.error("Background update failed:", err);
+          }
+        });
+      },
+      delete: async (id: DocId) => {
+        backgroundQueue.add(async () => {
+          try {
+            await fetch(this.url, this.buildBody(name, "delete", { id }));
+          } catch (err) {}
+        });
+      },
       createMany: async (payload: any[]) => {
         const chunkSize = 5000;
         for (let i = 0; i < payload.length; i += chunkSize) {
@@ -44,16 +99,9 @@ export default class DatabaseManagerAdapter {
 
           backgroundQueue.add(async () => {
             try {
-              await fetch(this.url, {
-                method: "POST",
-                body: JSON.stringify({
-                  name,
-                  action: "createMany",
-                  payload: chunk,
-                }),
-              });
+              await fetch(this.url, this.buildBody(name, "createMany", chunk));
             } catch (err) {
-              console.error("Background createMany failed:", err);
+              Logger.error("Background createMany failed:", err);
             }
           });
         }

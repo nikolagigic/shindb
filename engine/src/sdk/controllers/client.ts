@@ -15,9 +15,10 @@ import DatabaseManagerAdapter from "../../adapters/database-manager.ts";
 
 type CollectionCrud<T extends Table> = {
   create: (data: TableToType<T>) => Promise<Response<{ id: number }>>;
-  get: (id: DocId) => Response<{ id: number; doc: TableToType<T> }>;
+  get: (id: DocId) => Promise<Response<{ id: number; doc: TableToType<T> }>>;
   update: (id: DocId, doc: TableToUpdateType<T>) => void;
   delete: (id: DocId) => void;
+  deleteFromDb: (id: DocId) => void;
   createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
 };
 
@@ -61,12 +62,44 @@ export class Client {
     );
 
     return {
-      create: async (data: TableToType<T>) =>
-        await this.mapManager.set(name, data),
-      get: (id: DocId) => this.mapManager.get(name, id),
-      update: (id: DocId, doc: TableToUpdateType<T>) =>
-        this.mapManager.update(name, id, doc),
-      delete: (id: DocId) => this.mapManager.delete(name, id),
+      create: async (data: TableToType<T>) => {
+        operations.create(data);
+        return await this.mapManager.set(name, data);
+      },
+      get: async (id: DocId) => {
+        const storeRes = this.mapManager.get(name, id);
+        if (storeRes.status === Status.ERROR) {
+          const dbRes = await operations.get(id);
+          Logger.info(dbRes);
+          if (!dbRes.id) {
+            return {
+              status: Status.ERROR,
+            };
+          }
+          const { id: dbId, ...rest } = dbRes;
+
+          return {
+            status: Status.OK,
+            data: {
+              id: dbId,
+              doc: rest,
+            },
+          };
+        }
+
+        return storeRes;
+      },
+      update: (id: DocId, doc: TableToUpdateType<T>) => {
+        operations.update(id, doc);
+        return this.mapManager.update(name, id, doc);
+      },
+      delete: (id: DocId) => {
+        const storeRes = this.mapManager.delete(name, id);
+        if (storeRes.status === Status.ERROR) {
+          return;
+        }
+      },
+      deleteFromDb: (id: DocId) => {},
 
       createMany: async (docs: TableToType<T>[]) => {
         operations.createMany(docs);
