@@ -48,6 +48,6 @@ if (import.meta.main) {
     //   age: 1337,
     //   bio: "user 1 bio",
     // });
-    Logger.success("[GET]", await usersModel.get(999_999));
+    Logger.success("[GET]", await usersModel.get(1));
   });
 }

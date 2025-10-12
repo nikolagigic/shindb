@@ -18,7 +18,7 @@ type CollectionCrud<T extends Table> = {
   get: (id: DocId) => Promise<Response<{ id: number; doc: TableToType<T> }>>;
   update: (id: DocId, doc: TableToUpdateType<T>) => void;
   delete: (id: DocId) => void;
-  deleteFromDb: (id: DocId) => void;
+  purge: (id: DocId) => void;
   createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
 };
 
@@ -27,6 +27,7 @@ type CollectionMany<T extends Table> = {
   getMany: (ids: DocId[]) => Response<Map<DocId, TableToType<T>>>;
   updateMany: (data: TableToUpdateWithIdType<T>[]) => void;
   deleteMany: (ids: DocId[]) => void;
+  purgeMany: (ids: DocId[]) => void;
 };
 
 type CollectionFind<T extends Table> = {
@@ -70,7 +71,6 @@ export class Client {
         const storeRes = this.mapManager.get(name, id);
         if (storeRes.status === Status.ERROR) {
           const dbRes = await operations.get(id);
-          Logger.info(dbRes);
           if (!dbRes.id) {
             return {
               status: Status.ERROR,
@@ -93,22 +93,42 @@ export class Client {
         operations.update(id, doc);
         return this.mapManager.update(name, id, doc);
       },
-      delete: (id: DocId) => {
+      delete: async (id: DocId) => {
         const storeRes = this.mapManager.delete(name, id);
         if (storeRes.status === Status.ERROR) {
           return;
         }
+
+        await operations.delete(id);
       },
-      deleteFromDb: (id: DocId) => {},
+      purge: async (id: DocId) => {
+        this.mapManager.delete(name, id);
+
+        await operations.delete(id);
+      },
 
       createMany: async (docs: TableToType<T>[]) => {
         operations.createMany(docs);
         return await this.mapManager.setMany(name, docs);
       },
       getMany: (ids: DocId[]) => this.mapManager.getMany(name, ids),
-      updateMany: (data: TableToUpdateWithIdType<T>[]) =>
-        this.mapManager.updateMany(name, data),
-      deleteMany: (ids: DocId[]) => this.mapManager.deleteMany(name, ids),
+      updateMany: (data: TableToUpdateWithIdType<T>[]) => {
+        operations.updateMany(data);
+        return this.mapManager.updateMany(name, data);
+      },
+      deleteMany: async (ids: DocId[]) => {
+        const storeRes = this.mapManager.deleteMany(name, ids);
+        if (storeRes.status === Status.ERROR) {
+          return;
+        }
+
+        await operations.deleteMany(ids);
+      },
+      purgeMany: async (ids: DocId[]) => {
+        this.mapManager.deleteMany(name, ids);
+
+        await operations.deleteMany(ids);
+      },
 
       find: (where: FindQuery<T>) => this.mapManager.find<T>(name, where),
     };

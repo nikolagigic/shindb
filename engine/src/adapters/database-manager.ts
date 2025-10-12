@@ -106,6 +106,34 @@ export default class DatabaseManagerAdapter {
           });
         }
       },
+      updateMany: async (data: any[]) => {
+        const chunkSize = 5000;
+        for (let i = 0; i < data.length; i += chunkSize) {
+          const chunk = data.slice(i, i + chunkSize);
+
+          backgroundQueue.add(async () => {
+            try {
+              await fetch(this.url, this.buildBody(name, "updateMany", chunk));
+            } catch (err) {
+              Logger.error("Background createMany failed:", err);
+            }
+          });
+        }
+      },
+      deleteMany: async (payload: number[]) => {
+        const chunkSize = 5000;
+        for (let i = 0; i < payload.length; i += chunkSize) {
+          const chunk = payload.slice(i, i + chunkSize);
+
+          backgroundQueue.add(async () => {
+            try {
+              await fetch(this.url, this.buildBody(name, "deleteMany", chunk));
+            } catch (err) {
+              Logger.error("Background createMany failed:", err);
+            }
+          });
+        }
+      },
     };
   }
 }

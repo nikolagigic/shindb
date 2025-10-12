@@ -122,6 +122,55 @@ class DatabaseManager {
     return ids;
   }
 
+  public async updateMany(name: string, records: any[]) {
+    const collection = this.collections.get(name);
+    if (!collection) throw new Error(`Collection ${name} not open`);
+
+    records.forEach(async (record) => {
+      const oldFileIndex = Math.floor(record.id / 1000);
+      const oldFile = path.join(
+        path.dirname(collection.data),
+        `data-${oldFileIndex}.sdb`
+      );
+      const tombstone = JSON.stringify({
+        id: record.id,
+        deleted: true,
+        ts: Date.now(),
+      });
+      await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
+
+      // Append new version
+      const newId = ++collection.lastId;
+      const newFileIndex = Math.floor(newId / 1000);
+      const newFile = path.join(
+        path.dirname(collection.data),
+        `data-${newFileIndex}.sdb`
+      );
+
+      const { id: _, ...rest } = record;
+      const line = JSON.stringify({ id: newId, data: rest, ts: Date.now() });
+      await Deno.writeTextFile(newFile, line + "\n", { append: true });
+
+      return newId;
+    });
+  }
+
+  public async deleteMany(name: string, ids: number[]) {
+    const collection = this.collections.get(name);
+    if (!collection) throw new Error(`Collection ${name} not open`);
+
+    ids.forEach(async (id) => {
+      const fileIndex = Math.floor(id / 1000);
+      const dataFile = path.join(
+        path.dirname(collection.data),
+        `data-${fileIndex}.sdb`
+      );
+
+      const tombstone = JSON.stringify({ id, deleted: true, ts: Date.now() });
+      await Deno.writeTextFile(dataFile, tombstone + "\n", { append: true });
+    });
+  }
+
   /** Create single record, auto-generate ID */
   public async create(name: string, record: any) {
     const collection = this.collections.get(name);

@@ -78,6 +78,16 @@ export default class Server {
 
         return new Response("ok");
       }
+      case "updateMany": {
+        await this.databaseManager.updateMany(name, payload);
+
+        return new Response("ok");
+      }
+      case "deleteMany": {
+        await this.databaseManager.deleteMany(name, payload.ids);
+
+        return new Response("ok");
+      }
       default:
         return new Response("done");
     }
