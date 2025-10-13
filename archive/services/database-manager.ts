@@ -1,5 +1,6 @@
-import * as path from '@std/path';
-import Logger from '../utils/logger.ts';
+// deno-lint-ignore-file no-explicit-any
+import * as path from "@std/path";
+import Logger from "../utils/logger.ts";
 
 class DatabaseManager {
   private static instance: DatabaseManager;
@@ -15,16 +16,16 @@ class DatabaseManager {
   private readonly basePath: string;
 
   private constructor() {
-    this.basePath = path.join(Deno.cwd(), 'data');
+    this.basePath = path.join(Deno.cwd(), "data");
     Deno.mkdirSync(this.basePath, { recursive: true });
 
     for (const entry of Deno.readDirSync(this.basePath)) {
       if (entry.isDirectory) {
         const collection = entry.name;
         this.collections.set(collection, {
-          schema: path.join(this.basePath, collection, 'schema.sdb'),
-          data: path.join(this.basePath, collection, 'data.sdb'),
-          cache: path.join(this.basePath, collection, 'cache'),
+          schema: path.join(this.basePath, collection, "schema.sdb"),
+          data: path.join(this.basePath, collection, "data.sdb"),
+          cache: path.join(this.basePath, collection, "cache"),
           lastId: -1, // 0-based IDs, so next insert will become 0
         });
       }
@@ -43,8 +44,8 @@ class DatabaseManager {
     const collectionPath = path.join(this.basePath, name);
     await Deno.mkdir(collectionPath, { recursive: true });
 
-    const schemaPath = path.join(collectionPath, 'schema.sdb');
-    const cachePath = path.join(collectionPath, 'cache');
+    const schemaPath = path.join(collectionPath, "schema.sdb");
+    const cachePath = path.join(collectionPath, "cache");
     await Deno.mkdir(cachePath, { recursive: true });
 
     let needsUpdate = false;
@@ -67,8 +68,8 @@ class DatabaseManager {
       for await (const entry of Deno.readDir(collectionPath)) {
         if (
           entry.isFile &&
-          entry.name.startsWith('data-') &&
-          entry.name.endsWith('.sdb')
+          entry.name.startsWith("data-") &&
+          entry.name.endsWith(".sdb")
         ) {
           files.push(entry.name);
         }
@@ -79,7 +80,7 @@ class DatabaseManager {
         const content = await Deno.readTextFile(
           path.join(collectionPath, lastFile)
         );
-        const lastLine = content.trim().split('\n').pop();
+        const lastLine = content.trim().split("\n").pop();
         if (lastLine) {
           const rec = JSON.parse(lastLine);
           lastId = Number(rec.id) ?? -1;
@@ -91,7 +92,7 @@ class DatabaseManager {
 
     this.collections.set(name, {
       schema: schemaPath,
-      data: path.join(collectionPath, 'data-0.sdb'), // just default reference
+      data: path.join(collectionPath, "data-0.sdb"), // just default reference
       cache: cachePath,
       lastId,
     });
@@ -116,7 +117,7 @@ class DatabaseManager {
       );
 
       const line = JSON.stringify({ id: newId, data: r, ts: Date.now() });
-      await Deno.writeTextFile(dataFile, line + '\n', { append: true });
+      await Deno.writeTextFile(dataFile, line + "\n", { append: true });
     }
 
     return ids;
@@ -143,7 +144,7 @@ class DatabaseManager {
 
       try {
         const file = await Deno.readTextFile(dataFile);
-        const lines = file.trim().split('\n');
+        const lines = file.trim().split("\n");
 
         const idSet = new Set(groupIds);
         for (let i = lines.length - 1; i >= 0 && idSet.size > 0; i--) {
@@ -176,7 +177,7 @@ class DatabaseManager {
         deleted: true,
         ts: Date.now(),
       });
-      await Deno.writeTextFile(oldFile, tombstone + '\n', { append: true });
+      await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
 
       // Append new version
       const newId = ++collection.lastId;
@@ -188,7 +189,7 @@ class DatabaseManager {
 
       const { id: _, ...rest } = record;
       const line = JSON.stringify({ id: newId, data: rest, ts: Date.now() });
-      await Deno.writeTextFile(newFile, line + '\n', { append: true });
+      await Deno.writeTextFile(newFile, line + "\n", { append: true });
 
       return newId;
     });
@@ -206,8 +207,91 @@ class DatabaseManager {
       );
 
       const tombstone = JSON.stringify({ id, deleted: true, ts: Date.now() });
-      await Deno.writeTextFile(dataFile, tombstone + '\n', { append: true });
+      await Deno.writeTextFile(dataFile, tombstone + "\n", { append: true });
     });
+  }
+
+  public async find(name: string, where: any) {
+    const records = await this.readAllFromArchive(name);
+
+    const results = records.filter((record) => {
+      const match = this.evaluateWhere(where, record.data ?? record);
+      return match;
+    });
+
+    return results;
+  }
+
+  private evaluateWhere(where: any, record: any): boolean {
+    if ("AND" in where)
+      return where.AND.every((w: any) => this.evaluateWhere(w, record));
+    if ("OR" in where)
+      return where.OR.some((w: any) => this.evaluateWhere(w, record));
+
+    const { field, op } = where;
+    const value = record[field];
+
+    if (op.eq !== undefined && value != op.eq) return false; // loose equality fixes "1" vs 1
+    if (op.gt !== undefined && !(value > op.gt)) return false;
+    if (op.gte !== undefined && !(value >= op.gte)) return false;
+    if (op.lt !== undefined && !(value < op.lt)) return false;
+    if (op.lte !== undefined && !(value <= op.lte)) return false;
+    if (op.in && !op.in.includes(value)) return false;
+    if (op.nin && op.nin.includes(value)) return false;
+    if (
+      op.contains &&
+      typeof value === "string" &&
+      !value.includes(op.contains)
+    )
+      return false;
+    if (op.overlap && !op.overlap.some((v: any) => value?.includes?.(v)))
+      return false;
+
+    if (op.not && this.evaluateWhere({ field, op: op.not } as any, record))
+      return false;
+
+    return true;
+  }
+
+  private async readAllFromArchive(name: string) {
+    const collection = this.collections.get(name);
+    if (!collection) throw new Error(`Collection ${name} not open`);
+
+    // Just take the folder that already holds data-*.sdb files
+    const archiveDir = path.dirname(collection.data);
+    const records: any[] = [];
+
+    try {
+      for await (const entry of Deno.readDir(archiveDir)) {
+        if (
+          !entry.isFile ||
+          !entry.name.startsWith("data-") ||
+          !entry.name.endsWith(".sdb")
+        )
+          continue;
+        const filePath = path.join(archiveDir, entry.name);
+
+        try {
+          const file = await Deno.readTextFile(filePath);
+          const lines = file.trim().split("\n");
+
+          for (const line of lines) {
+            try {
+              const rec = JSON.parse(line);
+              if (!rec.deleted) records.push(rec);
+            } catch {
+              console.warn(`Corrupted line in ${filePath}`);
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to read ${filePath}:`, err);
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to read archive dir for ${name}:`, err);
+    }
+
+    return records;
   }
 
   /** Create single record, auto-generate ID */
@@ -223,7 +307,7 @@ class DatabaseManager {
     );
 
     const line = JSON.stringify({ id, data: record, ts: Date.now() });
-    await Deno.writeTextFile(dataFile, line + '\n', { append: true });
+    await Deno.writeTextFile(dataFile, line + "\n", { append: true });
 
     return id;
   }
@@ -240,7 +324,7 @@ class DatabaseManager {
 
     try {
       const file = await Deno.readTextFile(dataFile);
-      const lines = file.trim().split('\n');
+      const lines = file.trim().split("\n");
 
       for (let i = lines.length - 1; i >= 0; i--) {
         if (!lines[i]) continue;
@@ -272,7 +356,7 @@ class DatabaseManager {
       deleted: true,
       ts: Date.now(),
     });
-    await Deno.writeTextFile(oldFile, tombstone + '\n', { append: true });
+    await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
 
     // Append new version
     const newId = ++collection.lastId;
@@ -284,7 +368,7 @@ class DatabaseManager {
 
     const { id: _, ...rest } = record;
     const line = JSON.stringify({ id: newId, data: rest, ts: Date.now() });
-    await Deno.writeTextFile(newFile, line + '\n', { append: true });
+    await Deno.writeTextFile(newFile, line + "\n", { append: true });
 
     return newId;
   }
@@ -300,15 +384,15 @@ class DatabaseManager {
     );
 
     const tombstone = JSON.stringify({ id, deleted: true, ts: Date.now() });
-    await Deno.writeTextFile(dataFile, tombstone + '\n', { append: true });
+    await Deno.writeTextFile(dataFile, tombstone + "\n", { append: true });
   }
 
   private async checksum(input: string) {
     const data = new TextEncoder().encode(input);
-    const buf = await crypto.subtle.digest('SHA-256', data);
+    const buf = await crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(buf))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
 }
 

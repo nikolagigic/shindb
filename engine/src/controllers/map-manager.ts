@@ -508,21 +508,24 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
   find<T extends Table>(
     name: CollectionName,
     where: WhereQuery<T>
-  ): Response<{ id: DocId; doc: V }[]> {
-    const results: { id: DocId; doc: V }[] = [];
+  ): Response<Map<DocId, V>> {
+    const resultMap = new Map<DocId, V>();
 
     for (const [, mapState] of this.maps) {
       const allDocs = mapState.map.getAll(name);
       if (allDocs.status === Status.OK && allDocs.data) {
         for (const [id, doc] of allDocs.data.entries()) {
           if (this.matchesWhere(doc, where)) {
-            results.push({ id, doc }); // wrap only once here
+            resultMap.set(id, doc);
           }
         }
       }
     }
 
-    return { status: Status.OK, data: results };
+    return {
+      status: resultMap.size === 0 ? Status.ERROR : Status.OK,
+      data: resultMap,
+    };
   }
 
   private matchesWhere<T extends Table>(

@@ -29,7 +29,7 @@ if (import.meta.main) {
     },
   });
 
-  const NUM_OF_USERS = 100_000;
+  const NUM_OF_USERS = 1_000;
 
   const usersFromArray = Array.from({ length: NUM_OF_USERS }, (_, i) => ({
     username: `user ${i}`,
@@ -42,13 +42,17 @@ if (import.meta.main) {
   );
 
   await profileAsync(`CRUD Testing`, async () => {
-    // await usersModel.createMany(usersFromArray);
+    await usersModel.createMany(usersFromArray);
     // await usersModel.create({
     //   username: "user 1",
     //   age: 1337,
     //   bio: "user 1 bio",
     // });
 
-    Logger.success("[GET MANY]", await usersModel.getMany(_userIds));
+    // Logger.success("[GET MANY]", await usersModel.getMany(_userIds));
+    Logger.success(
+      "[FIND]",
+      await usersModel.find({ field: "username", op: { contains: "user 1" } })
+    );
   });
 }

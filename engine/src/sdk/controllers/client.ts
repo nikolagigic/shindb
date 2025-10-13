@@ -31,9 +31,7 @@ type CollectionMany<T extends Table> = {
 };
 
 type CollectionFind<T extends Table> = {
-  find: (
-    where: FindQuery<T>
-  ) => Response<{ id: number; doc: TableToType<T> }[]>;
+  find: (where: FindQuery<T>) => Promise<Response<Map<DocId, TableToType<T>>>>;
 };
 
 type Collection<T extends Table> = CollectionCrud<T> &
@@ -139,7 +137,19 @@ export class Client {
         await operations.deleteMany(ids);
       },
 
-      find: (where: FindQuery<T>) => this.mapManager.find<T>(name, where),
+      find: async (where: FindQuery<T>) => {
+        const storeRes = this.mapManager.find<T>(name, where);
+        if (storeRes.status === Status.ERROR) {
+          const dbRes = await operations.find(where);
+
+          return {
+            status: Status.OK,
+            data: dbRes,
+          };
+        }
+
+        return storeRes;
+      },
     };
   }
 }

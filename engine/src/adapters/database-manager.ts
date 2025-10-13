@@ -159,6 +159,44 @@ export default class DatabaseManagerAdapter {
           });
         }
       },
+      find: async (where: any) => {
+        const dbRes = await fetch(
+          this.url,
+          this.buildBody(name, "find", where)
+        );
+        const res = await dbRes.json();
+
+        const resultMap = new Map();
+        res.forEach((obj: any) => {
+          resultMap.set(Number(obj.id), obj.data);
+        });
+
+        return resultMap as Map<DocId, any>;
+
+        // const chunkSize = 5000;
+        // const res = [];
+        // for (let i = 0; i < ids.length; i += chunkSize) {
+        //   const chunk = ids.slice(i, i + chunkSize);
+
+        //   const dbRes = await fetch(
+        //     this.url,
+        //     this.buildBody(name, "getMany", chunk)
+        //   );
+
+        //   const data = await dbRes.json();
+        //   res.push(data);
+        // }
+
+        // // Merge all objects and convert back to Map
+        // const resultMap = new Map();
+        // res.forEach((obj: any) => {
+        //   Object.entries(obj).forEach(([key, value]) => {
+        //     resultMap.set(Number(key), value);
+        //   });
+        // });
+
+        // return resultMap as Map<DocId, any>;
+      },
     };
   }
 }
