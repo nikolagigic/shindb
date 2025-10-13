@@ -24,7 +24,7 @@ type CollectionCrud<T extends Table> = {
 
 type CollectionMany<T extends Table> = {
   createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
-  getMany: (ids: DocId[]) => Response<Map<DocId, TableToType<T>>>;
+  getMany: (ids: DocId[]) => Promise<Response<Map<DocId, TableToType<T>>>>;
   updateMany: (data: TableToUpdateWithIdType<T>[]) => void;
   deleteMany: (ids: DocId[]) => void;
   purgeMany: (ids: DocId[]) => void;
@@ -111,7 +111,16 @@ export class Client {
         operations.createMany(docs);
         return await this.mapManager.setMany(name, docs);
       },
-      getMany: (ids: DocId[]) => this.mapManager.getMany(name, ids),
+      getMany: async (ids: DocId[]) => {
+        const storeRes = this.mapManager.getMany(name, ids);
+
+        if (storeRes.status === Status.ERROR) {
+          const dbRes = await operations.getMany(ids);
+          return { status: Status.OK, data: dbRes };
+        }
+
+        return storeRes;
+      },
       updateMany: (data: TableToUpdateWithIdType<T>[]) => {
         operations.updateMany(data);
         return this.mapManager.updateMany(name, data);

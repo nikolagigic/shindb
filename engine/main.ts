@@ -29,17 +29,17 @@ if (import.meta.main) {
     },
   });
 
-  const NUM_OF_USERS = 1_000_000;
+  const NUM_OF_USERS = 100_000;
 
-  // const usersFromArray = Array.from({ length: NUM_OF_USERS }, (_, i) => ({
-  //   username: `user ${i}`,
-  //   age: i,
-  //   bio: loremIpsum(256),
-  // }));
+  const usersFromArray = Array.from({ length: NUM_OF_USERS }, (_, i) => ({
+    username: `user ${i}`,
+    age: i,
+    bio: loremIpsum(256),
+  }));
 
-  // const _userIds = usersFromArray.map(
-  //   (u) => Number(u.username.split(" ").at(1))!
-  // );
+  const _userIds = usersFromArray.map(
+    (u) => Number(u.username.split(" ").at(1))!
+  );
 
   await profileAsync(`CRUD Testing`, async () => {
     // await usersModel.createMany(usersFromArray);
@@ -48,6 +48,7 @@ if (import.meta.main) {
     //   age: 1337,
     //   bio: "user 1 bio",
     // });
-    Logger.success("[GET]", await usersModel.get(1));
+
+    Logger.success("[GET MANY]", await usersModel.getMany(_userIds));
   });
 }

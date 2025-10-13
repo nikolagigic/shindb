@@ -106,6 +106,31 @@ export default class DatabaseManagerAdapter {
           });
         }
       },
+      getMany: async (payload: any[]) => {
+        const chunkSize = 5000;
+        const res = [];
+        for (let i = 0; i < payload.length; i += chunkSize) {
+          const chunk = payload.slice(i, i + chunkSize);
+
+          const dbRes = await fetch(
+            this.url,
+            this.buildBody(name, "getMany", chunk)
+          );
+
+          const data = await dbRes.json();
+          res.push(data);
+        }
+
+        // Merge all objects and convert back to Map
+        const resultMap = new Map();
+        res.forEach((obj: any) => {
+          Object.entries(obj).forEach(([key, value]) => {
+            resultMap.set(Number(key), value);
+          });
+        });
+
+        return resultMap as Map<DocId, any>;
+      },
       updateMany: async (data: any[]) => {
         const chunkSize = 5000;
         for (let i = 0; i < data.length; i += chunkSize) {

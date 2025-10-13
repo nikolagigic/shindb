@@ -1,14 +1,14 @@
 // deno-lint-ignore-file no-explicit-any
-import DatabaseManager from "../services/database-manager.ts";
-import Logger from "../utils/logger.ts";
+import DatabaseManager from '../services/database-manager.ts';
+import Logger from '../utils/logger.ts';
 
 export default class Server {
   private static instance: Server;
   private readonly server: Deno.HttpServer<Deno.NetAddr>;
 
   constructor(readonly databaseManager: DatabaseManager) {
-    const HOST = Deno.env.get("HOST") || "0.0.0.0";
-    const PORT = Number(Deno.env.get("PORT")) || 8000;
+    const HOST = Deno.env.get('HOST') || '0.0.0.0';
+    const PORT = Number(Deno.env.get('PORT')) || 8000;
 
     this.server = Deno.serve(
       {
@@ -19,7 +19,7 @@ export default class Server {
         },
       },
       async (req) => {
-        if (req.method !== "POST") {
+        if (req.method !== 'POST') {
           Logger.error(`[Server] Invalid Method`);
           return new Response(`Invalid Method`, { status: 405 });
         }
@@ -44,52 +44,63 @@ export default class Server {
     };
 
     switch (action) {
-      case "openCollection": {
+      case 'openCollection': {
         this.databaseManager.openCollection(name, payload);
 
-        return new Response("ok");
+        return new Response('ok');
       }
-      case "create": {
+      case 'create': {
         await this.databaseManager.create(name, payload);
 
-        return new Response("ok");
+        return new Response('ok');
       }
-      case "get": {
+      case 'get': {
         const res = await this.databaseManager.get(name, payload.id);
         if (!res) {
-          return new Response("not found", { status: 404 });
+          return new Response('not found', { status: 404 });
         }
         const data = JSON.stringify({ id: res.id, ...res.data });
 
         return new Response(data);
       }
-      case "update": {
+      case 'update': {
         await this.databaseManager.update(name, payload);
 
-        return new Response("ok");
+        return new Response('ok');
       }
-      case "delete": {
+      case 'delete': {
         await this.databaseManager.delete(name, payload.id);
 
-        return new Response("ok");
+        return new Response('ok');
       }
-      case "createMany": {
+      case 'createMany': {
         await this.databaseManager.createMany(name, payload);
 
-        return new Response("ok");
+        return new Response('ok');
       }
-      case "updateMany": {
+      case 'getMany': {
+        const res = await this.databaseManager.getMany(name, payload);
+        if (!res) {
+          return new Response('not found', { status: 404 });
+        }
+
+        // Convert Map to object for JSON serialization
+        const data = JSON.stringify(Object.fromEntries(res));
+
+        return new Response(data);
+      }
+      case 'updateMany': {
         await this.databaseManager.updateMany(name, payload);
 
-        return new Response("ok");
+        return new Response('ok');
       }
-      case "deleteMany": {
+      case 'deleteMany': {
         await this.databaseManager.deleteMany(name, payload.ids);
 
-        return new Response("ok");
+        return new Response('ok');
       }
       default:
-        return new Response("done");
+        return new Response('done');
     }
   }
 }

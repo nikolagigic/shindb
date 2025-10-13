@@ -278,7 +278,10 @@ export default class MapManager<V extends Uint8Array> implements DataStore<V> {
       }
     }
 
-    return { status: Status.OK, data: results };
+    return {
+      status: results.size === 0 ? Status.ERROR : Status.OK,
+      data: results,
+    };
   }
 
   async setMany(
