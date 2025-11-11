@@ -2,6 +2,9 @@
 import * as path from "@std/path";
 import Logger from "../utils/logger.ts";
 
+type PagePath = string;
+type PageTumbstoneCount = number;
+
 class DatabaseManager {
   private static instance: DatabaseManager;
   private readonly collections: Map<
@@ -15,6 +18,8 @@ class DatabaseManager {
     }
   > = new Map();
   private readonly basePath: string;
+  private pagesTumbstones: Map<PagePath, PageTumbstoneCount> = new Map();
+  private hotPages: string[] = [];
 
   private constructor() {
     this.basePath = path.join(Deno.cwd(), "data");
@@ -33,7 +38,8 @@ class DatabaseManager {
       }
     }
 
-    this.garbageCollector();
+    this.checkTumbstones();
+    this.triggerGC();
     Logger.success(`[Database Manager] Started`);
   }
 
@@ -44,84 +50,111 @@ class DatabaseManager {
     return this.instance;
   }
 
-  private garbageCollector() {
-    setTimeout(() => {
-      try {
-        for (const [, collection] of this.collections) {
-          for (const entry of Deno.readDirSync(collection.path)) {
-            if (!entry.isFile) continue;
+  private checkTumbstones() {
+    for (const [, collection] of this.collections) {
+      for (const entry of Deno.readDirSync(collection.path)) {
+        const name = entry.name;
+        if (!(name.startsWith("data-") && name.endsWith(".sdb"))) continue;
 
-            const name = entry.name;
-            if (!(name.startsWith("data-") && name.endsWith(".sdb"))) continue;
+        const filePath = path.join(collection.path, name);
 
-            const filePath = path.join(collection.path, name);
-
-            let content = "";
-            try {
-              content = Deno.readTextFileSync(filePath);
-            } catch {
-              continue; // unreadable file, skip
-            }
-
-            const lines = content.trim() ? content.trim().split("\n") : [];
-            if (lines.length === 0) continue;
-
-            const kept: string[] = [];
-            const seen = new Set<number | string>();
-            const deleted = new Set<number | string>();
-
-            for (let i = lines.length - 1; i >= 0; i--) {
-              const line = lines[i].trim();
-              if (!line) continue;
-
-              let obj: any;
-              try {
-                obj = JSON.parse(line);
-              } catch {
-                // corrupted line -> drop
-                continue;
-              }
-
-              const id = obj?.id;
-              if (id === undefined || id === null) continue;
-
-              if (seen.has(id) || deleted.has(id)) continue;
-
-              if (obj.deleted === true) {
-                // latest is a tombstone => purge this id entirely
-                deleted.add(id);
-                continue;
-              }
-
-              kept.push(line); // keep the latest live record only
-              seen.add(id);
-            }
-
-            kept.reverse(); // restore chronological order for readability
-
-            const newContent = kept.length ? kept.join("\n") + "\n" : "";
-            const current = content.endsWith("\n") ? content : content + "\n";
-
-            if (newContent !== current) {
-              const tmp = filePath + ".tmp";
-              Deno.writeTextFileSync(tmp, newContent);
-              try {
-                Deno.removeSync(filePath);
-              } catch {}
-              Deno.renameSync(tmp, filePath);
-            } else {
-              try {
-                Deno.removeSync(filePath + ".tmp");
-              } catch {}
-            }
-          }
+        if (
+          Deno.readTextFileSync(filePath).trim().split("\n").length - 1000 >
+          200
+        ) {
+          this.hotPages.push(filePath);
         }
-      } catch {
-        // best-effort GC — never crash the process
       }
+    }
+  }
 
+  private bumpPage(page: string) {
+    const currentPageTumbstoneCount = this.pagesTumbstones.get(page) ?? 0;
+    const nextTumbstoneCount = currentPageTumbstoneCount + 1;
+    if (nextTumbstoneCount >= 200) {
+      this.hotPages.push(page);
       this.garbageCollector();
+    } else {
+      this.pagesTumbstones.set(page, nextTumbstoneCount);
+    }
+  }
+
+  private triggerGC() {
+    setTimeout(() => {
+      this.garbageCollector();
+      this.triggerGC();
     }, 60_000);
+  }
+
+  private garbageCollector() {
+    try {
+      for (const filePath of this.hotPages) {
+        let content = "";
+        try {
+          content = Deno.readTextFileSync(filePath);
+        } catch {
+          continue; // unreadable file, skip
+        }
+
+        const lines = content.trim() ? content.trim().split("\n") : [];
+        if (lines.length === 0) continue;
+
+        const kept: string[] = [];
+        const seen = new Set<number | string>();
+        const deleted = new Set<number | string>();
+
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          let obj: any;
+          try {
+            obj = JSON.parse(line);
+          } catch {
+            // corrupted line -> drop
+            continue;
+          }
+
+          const id = obj?.id;
+          if (id === undefined || id === null) continue;
+
+          if (seen.has(id) || deleted.has(id)) continue;
+
+          if (obj.deleted === true) {
+            // latest is a tombstone => purge this id entirely
+            deleted.add(id);
+            continue;
+          }
+
+          kept.push(line); // keep the latest live record only
+          seen.add(id);
+        }
+
+        kept.reverse(); // restore chronological order for readability
+
+        const newContent = kept.length ? kept.join("\n") + "\n" : "";
+        const current = content.endsWith("\n") ? content : content + "\n";
+
+        if (newContent !== current) {
+          const tmp = filePath + ".tmp";
+          Deno.writeTextFileSync(tmp, newContent);
+          try {
+            Deno.removeSync(filePath);
+          } catch {}
+          Deno.renameSync(tmp, filePath);
+        } else {
+          try {
+            Deno.removeSync(filePath + ".tmp");
+          } catch {}
+        }
+
+        this.pagesTumbstones.set(filePath, 0);
+      }
+    } catch {
+      // best-effort GC — never crash the process
+    }
+
+    this.hotPages = [];
   }
 
   public async openCollection(name: string, schema: any) {
@@ -264,6 +297,7 @@ class DatabaseManager {
         ts: Date.now(),
       });
       await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
+      this.bumpPage(oldFile);
 
       // Append new version
       const newId = record.id;
@@ -299,6 +333,7 @@ class DatabaseManager {
 
       const tombstone = JSON.stringify({ id, deleted: true, ts: Date.now() });
       await Deno.writeTextFile(dataFile, tombstone + "\n", { append: true });
+      this.bumpPage(dataFile);
     });
   }
 
@@ -449,6 +484,7 @@ class DatabaseManager {
       ts: Date.now(),
     });
     await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
+    this.bumpPage(oldFile);
 
     // Append new version
     const newId = record.id;
@@ -481,6 +517,7 @@ class DatabaseManager {
 
     const tombstone = JSON.stringify({ id, deleted: true, ts: Date.now() });
     await Deno.writeTextFile(dataFile, tombstone + "\n", { append: true });
+    this.bumpPage(dataFile);
   }
 
   private async checksum(input: string) {

@@ -57,12 +57,12 @@ if (import.meta.main) {
     //   age: 1337,
     //   bio: "user 1 bio",
     // });
-    for (let i = 0; i <= 300; i++) {
-      usersModel.update(i, {
-        age: 1338,
-      });
-    }
-    Logger.success(await usersModel.get(200));
+    // for (let i = 0; i <= 300; i++) {
+    //   usersModel.update(i, {
+    //     age: 1339,
+    //   });
+    // }
+    Logger.success(await usersModel.get(217));
     // await usersModel.delete(2);
     // Logger.success(await usersModel.get(3));
 
