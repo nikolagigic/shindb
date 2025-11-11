@@ -95,7 +95,7 @@ export default class Server {
         return new Response("ok");
       }
       case "deleteMany": {
-        await this.databaseManager.deleteMany(name, payload.ids);
+        await this.databaseManager.deleteMany(name, payload);
 
         return new Response("ok");
       }

@@ -126,7 +126,7 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     const st = this.data.get(name);
     if (!st) return { status: Status.ERROR };
     if (!st.map.has(docId)) return { status: Status.ERROR };
-    st.map.set(docId, patch);
+    st.map.set(docId, { ...st.map.get(docId), ...patch });
     return { status: Status.OK, data: { id: docId, doc: patch } };
   }
 
@@ -187,8 +187,10 @@ export class InMemoryDataStore<V extends Uint8Array<ArrayBufferLike>>
     const updated: { id: DocId; doc: V }[] = [];
     for (const { id, doc } of updates) {
       if (!st.map.has(id)) return { status: Status.ERROR };
-      st.map.set(id, doc);
-      updated.push({ id, doc });
+      const previousRecord = st.map.get(id);
+      const patchedRecord = { ...previousRecord, ...doc };
+      st.map.set(id, patchedRecord);
+      updated.push({ id, doc: patchedRecord });
     }
 
     return { status: Status.OK, data: { updated } };

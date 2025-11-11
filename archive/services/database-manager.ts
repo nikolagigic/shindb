@@ -9,6 +9,7 @@ class DatabaseManager {
     {
       schema: string;
       data: string;
+      path: string;
       cache: string;
       lastId: number;
     }
@@ -25,11 +26,14 @@ class DatabaseManager {
         this.collections.set(collection, {
           schema: path.join(this.basePath, collection, "schema.sdb"),
           data: path.join(this.basePath, collection, "data.sdb"),
+          path: path.join(this.basePath, collection),
           cache: path.join(this.basePath, collection, "cache"),
           lastId: -1, // 0-based IDs, so next insert will become 0
         });
       }
     }
+
+    this.garbageCollector();
     Logger.success(`[Database Manager] Started`);
   }
 
@@ -38,6 +42,86 @@ class DatabaseManager {
       this.instance = new DatabaseManager();
     }
     return this.instance;
+  }
+
+  private garbageCollector() {
+    setTimeout(() => {
+      try {
+        for (const [, collection] of this.collections) {
+          for (const entry of Deno.readDirSync(collection.path)) {
+            if (!entry.isFile) continue;
+
+            const name = entry.name;
+            if (!(name.startsWith("data-") && name.endsWith(".sdb"))) continue;
+
+            const filePath = path.join(collection.path, name);
+
+            let content = "";
+            try {
+              content = Deno.readTextFileSync(filePath);
+            } catch {
+              continue; // unreadable file, skip
+            }
+
+            const lines = content.trim() ? content.trim().split("\n") : [];
+            if (lines.length === 0) continue;
+
+            const kept: string[] = [];
+            const seen = new Set<number | string>();
+            const deleted = new Set<number | string>();
+
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const line = lines[i].trim();
+              if (!line) continue;
+
+              let obj: any;
+              try {
+                obj = JSON.parse(line);
+              } catch {
+                // corrupted line -> drop
+                continue;
+              }
+
+              const id = obj?.id;
+              if (id === undefined || id === null) continue;
+
+              if (seen.has(id) || deleted.has(id)) continue;
+
+              if (obj.deleted === true) {
+                // latest is a tombstone => purge this id entirely
+                deleted.add(id);
+                continue;
+              }
+
+              kept.push(line); // keep the latest live record only
+              seen.add(id);
+            }
+
+            kept.reverse(); // restore chronological order for readability
+
+            const newContent = kept.length ? kept.join("\n") + "\n" : "";
+            const current = content.endsWith("\n") ? content : content + "\n";
+
+            if (newContent !== current) {
+              const tmp = filePath + ".tmp";
+              Deno.writeTextFileSync(tmp, newContent);
+              try {
+                Deno.removeSync(filePath);
+              } catch {}
+              Deno.renameSync(tmp, filePath);
+            } else {
+              try {
+                Deno.removeSync(filePath + ".tmp");
+              } catch {}
+            }
+          }
+        }
+      } catch {
+        // best-effort GC — never crash the process
+      }
+
+      this.garbageCollector();
+    }, 60_000);
   }
 
   public async openCollection(name: string, schema: any) {
@@ -93,6 +177,7 @@ class DatabaseManager {
     this.collections.set(name, {
       schema: schemaPath,
       data: path.join(collectionPath, "data-0.sdb"), // just default reference
+      path: collectionPath,
       cache: cachePath,
       lastId,
     });
@@ -167,6 +252,7 @@ class DatabaseManager {
     if (!collection) throw new Error(`Collection ${name} not open`);
 
     records.forEach(async (record) => {
+      const previousRecord = await this.get(name, record.id);
       const oldFileIndex = Math.floor(record.id / 1000);
       const oldFile = path.join(
         path.dirname(collection.data),
@@ -180,7 +266,7 @@ class DatabaseManager {
       await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
 
       // Append new version
-      const newId = ++collection.lastId;
+      const newId = record.id;
       const newFileIndex = Math.floor(newId / 1000);
       const newFile = path.join(
         path.dirname(collection.data),
@@ -188,7 +274,12 @@ class DatabaseManager {
       );
 
       const { id: _, ...rest } = record;
-      const line = JSON.stringify({ id: newId, data: rest, ts: Date.now() });
+
+      const line = JSON.stringify({
+        id: newId,
+        data: { ...previousRecord.data, ...rest.doc },
+        ts: Date.now(),
+      });
       await Deno.writeTextFile(newFile, line + "\n", { append: true });
 
       return newId;
@@ -344,6 +435,7 @@ class DatabaseManager {
   public async update(name: string, record: any) {
     const collection = this.collections.get(name);
     if (!collection) throw new Error(`Collection ${name} not open`);
+    const previousRecord = await this.get(name, record.id);
 
     // Tombstone old record
     const oldFileIndex = Math.floor(record.id / 1000);
@@ -359,7 +451,7 @@ class DatabaseManager {
     await Deno.writeTextFile(oldFile, tombstone + "\n", { append: true });
 
     // Append new version
-    const newId = ++collection.lastId;
+    const newId = record.id;
     const newFileIndex = Math.floor(newId / 1000);
     const newFile = path.join(
       path.dirname(collection.data),
@@ -367,7 +459,11 @@ class DatabaseManager {
     );
 
     const { id: _, ...rest } = record;
-    const line = JSON.stringify({ id: newId, data: rest, ts: Date.now() });
+    const line = JSON.stringify({
+      id: newId,
+      data: { ...previousRecord.data, ...rest },
+      ts: Date.now(),
+    });
     await Deno.writeTextFile(newFile, line + "\n", { append: true });
 
     return newId;

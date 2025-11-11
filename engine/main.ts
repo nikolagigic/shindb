@@ -29,7 +29,16 @@ if (import.meta.main) {
     },
   });
 
-  const NUM_OF_USERS = 1_000;
+  const postsModel = await collectionManager.sdk.collection("posts", {
+    author: {
+      type: "number",
+    },
+    body: {
+      type: "string",
+    },
+  });
+
+  const NUM_OF_USERS = 1;
 
   const usersFromArray = Array.from({ length: NUM_OF_USERS }, (_, i) => ({
     username: `user ${i}`,
@@ -42,17 +51,34 @@ if (import.meta.main) {
   );
 
   await profileAsync(`CRUD Testing`, async () => {
-    await usersModel.createMany(usersFromArray);
+    // await usersModel.createMany(usersFromArray);
     // await usersModel.create({
     //   username: "user 1",
     //   age: 1337,
     //   bio: "user 1 bio",
     // });
+    for (let i = 0; i <= 300; i++) {
+      usersModel.update(i, {
+        age: 1338,
+      });
+    }
+    Logger.success(await usersModel.get(200));
+    // await usersModel.delete(2);
+    // Logger.success(await usersModel.get(3));
+
+    // usersModel.updateMany([
+    //   { id: 1001, doc: { age: 1 } },
+    //   { id: 1002, doc: { age: 1 } },
+    // ]);
+    // usersModel.deleteMany([5, 6]);
+    // Logger.success(await usersModel.getMany(_userIds));
+
+    // Logger.success(await usersModel.find({ field: "age", op: { eq: 33 } }));
 
     // Logger.success("[GET MANY]", await usersModel.getMany(_userIds));
-    Logger.success(
-      "[FIND]",
-      await usersModel.find({ field: "username", op: { contains: "user 1" } })
-    );
+    // Logger.success(
+    //   "[FIND]",
+    //   await usersModel.find({ field: "username", op: { contains: "user 1" } })
+    // );
   });
 }

@@ -1,8 +1,8 @@
 // deno-lint-ignore-file no-explicit-any
 import type { Table } from "@/types/collection-manager.ts";
-import Logger from "../utils/logger.ts";
-import { backgroundQueue } from "../services/background-queue.ts";
-import { DocId } from "../services/data-store.ts";
+import Logger from "@/utils/logger.ts";
+import { backgroundQueue } from "@/services/background-queue.ts";
+import type { DocId } from "@/services/data-store.ts";
 
 type DatabaseManagerAdapterConfig = {
   host?: string;

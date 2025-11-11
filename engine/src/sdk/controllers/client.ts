@@ -6,20 +6,32 @@ import type {
   TableToType,
   TableToUpdateType,
   TableToUpdateWithIdType,
+  FindQuery,
 } from "@/types/collection-manager.ts";
 import Logger from "@/utils/logger.ts";
 import { type Response, Status } from "@/types/operations.ts";
 import type { DocId } from "@/services/data-store.ts";
-import type { FindQuery } from "@/types/collection-manager.ts";
-import DatabaseManagerAdapter from "../../adapters/database-manager.ts";
+import type DatabaseManagerAdapter from "@/adapters/database-manager.ts";
 
 type CollectionCrud<T extends Table> = {
   create: (data: TableToType<T>) => Promise<Response<{ id: number }>>;
   get: (id: DocId) => Promise<Response<{ id: number; doc: TableToType<T> }>>;
-  update: (id: DocId, doc: TableToUpdateType<T>) => void;
-  delete: (id: DocId) => void;
+  update: (
+    id: DocId,
+    doc: TableToUpdateType<T>
+  ) => Promise<Response<{ id: DocId; doc: any }>>;
+  /**
+   * Attempts to delete from map manager, if successful, delete from persistance db
+   *
+   * @param id
+   */
+  delete: (id: DocId) => Promise<void>;
+  /**
+   * Deletes both from the map manager and persistance db
+   *
+   * @param id
+   */
   purge: (id: DocId) => void;
-  createMany: (docs: TableToType<T>[]) => Promise<Response<{ ids: number[] }>>;
 };
 
 type CollectionMany<T extends Table> = {
@@ -87,8 +99,9 @@ export class Client {
 
         return storeRes;
       },
-      update: (id: DocId, doc: TableToUpdateType<T>) => {
-        operations.update(id, doc);
+      update: async (id: DocId, doc: TableToUpdateType<T>) => {
+        await operations.update(id, doc);
+
         return this.mapManager.update(name, id, doc);
       },
       delete: async (id: DocId) => {
