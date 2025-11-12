@@ -1,29 +1,44 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@brettchalupa/deno-disk-usage@0.2": "0.2.0",
     "jsr:@std/assert@1": "1.0.14",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
-    "jsr:@std/internal@^1.0.10": "1.0.10",
+    "jsr:@std/cli@^1.0.23": "1.0.23",
+    "jsr:@std/internal@^1.0.10": "1.0.12",
+    "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@*": "1.1.2",
     "jsr:@std/streams@^1.0.12": "1.0.12"
   },
   "jsr": {
+    "@brettchalupa/deno-disk-usage@0.2.0": {
+      "integrity": "aea44afc75d28be1887839eb73bbd058026d0186baca232c05e35f0446566266"
+    },
     "@std/assert@1.0.14": {
       "integrity": "68d0d4a43b365abc927f45a9b85c639ea18a9fab96ad92281e493e4ed84abaa4",
       "dependencies": [
-        "jsr:@std/internal"
+        "jsr:@std/internal@^1.0.10"
       ]
     },
     "@std/bytes@1.0.6": {
       "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
     },
+    "@std/cli@1.0.23": {
+      "integrity": "bf95b7a9425ba2af1ae5a6359daf58c508f2decf711a76ed2993cd352498ccca",
+      "dependencies": [
+        "jsr:@std/internal@^1.0.12"
+      ]
+    },
     "@std/internal@1.0.10": {
       "integrity": "e3be62ce42cab0e177c27698e5d9800122f67b766a0bea6ca4867886cbde8cf7"
+    },
+    "@std/internal@1.0.12": {
+      "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
     },
     "@std/path@1.1.2": {
       "integrity": "c0b13b97dfe06546d5e16bf3966b1cadf92e1cc83e56ba5476ad8b498d9e3038",
       "dependencies": [
-        "jsr:@std/internal"
+        "jsr:@std/internal@^1.0.10"
       ]
     },
     "@std/streams@1.0.12": {
@@ -105,7 +120,9 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@brettchalupa/deno-disk-usage@0.2",
       "jsr:@std/assert@1",
+      "jsr:@std/cli@^1.0.23",
       "jsr:@std/path@*",
       "jsr:@std/streams@^1.0.12"
     ]
